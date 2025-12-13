@@ -10,6 +10,7 @@ import MapPage from "./pages/MapPage";
 import DronePage from "./pages/DronePage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import SettingsPage from "./pages/SettingsPage";
+import ParksPage from "./pages/ParksPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/parks" element={<ParksPage />} />
           <Route path="/detect" element={<DetectPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/map" element={<MapPage />} />

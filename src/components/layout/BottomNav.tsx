@@ -4,16 +4,16 @@ import {
   LayoutDashboard, 
   Scan, 
   AlertTriangle, 
-  Map, 
+  TreePine, 
   Plane 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/', icon: LayoutDashboard, label: 'Home' },
+  { path: '/parks', icon: TreePine, label: 'Parks' },
   { path: '/detect', icon: Scan, label: 'Detect' },
   { path: '/alerts', icon: AlertTriangle, label: 'Alerts' },
-  { path: '/map', icon: Map, label: 'Map' },
   { path: '/drone', icon: Plane, label: 'Drone' },
 ];
 
