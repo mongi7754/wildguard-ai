@@ -1,1 +1,13 @@
 project_id = "ecilbfbvxupwtzmhifpt"
+
+[functions.wildlife-biometric-analysis]
+verify_jwt = false
+
+[functions.threat-prediction-engine]
+verify_jwt = false
+
+[functions.autonomous-commander]
+verify_jwt = false
+
+[functions.ai-command-assistant]
+verify_jwt = false

@@ -11,6 +11,11 @@ import DronePage from "./pages/DronePage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import SettingsPage from "./pages/SettingsPage";
 import ParksPage from "./pages/ParksPage";
+import BiometricIdentityPage from "./pages/BiometricIdentityPage";
+import IntelligenceGraphPage from "./pages/IntelligenceGraphPage";
+import AutonomousCommanderPage from "./pages/AutonomousCommanderPage";
+import AIAssistantPage from "./pages/AIAssistantPage";
+import ThreatPredictionPage from "./pages/ThreatPredictionPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,7 +35,11 @@ const App = () => (
           <Route path="/drone" element={<DronePage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/biometric" element={<BiometricIdentityPage />} />
+          <Route path="/intelligence" element={<IntelligenceGraphPage />} />
+          <Route path="/commander" element={<AutonomousCommanderPage />} />
+          <Route path="/assistant" element={<AIAssistantPage />} />
+          <Route path="/predictions" element={<ThreatPredictionPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
