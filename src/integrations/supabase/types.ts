@@ -14,7 +14,446 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      autonomous_decisions: {
+        Row: {
+          action_taken: string
+          confidence: number
+          created_at: string
+          decision_type: string
+          human_override: boolean | null
+          id: string
+          outcome: string | null
+          parameters: Json | null
+          trigger_event: string
+        }
+        Insert: {
+          action_taken: string
+          confidence: number
+          created_at?: string
+          decision_type: string
+          human_override?: boolean | null
+          id?: string
+          outcome?: string | null
+          parameters?: Json | null
+          trigger_event: string
+        }
+        Update: {
+          action_taken?: string
+          confidence?: number
+          created_at?: string
+          decision_type?: string
+          human_override?: boolean | null
+          id?: string
+          outcome?: string | null
+          parameters?: Json | null
+          trigger_event?: string
+        }
+        Relationships: []
+      }
+      conservation_credits: {
+        Row: {
+          credit_amount: number
+          entity_name: string
+          entity_type: string
+          id: string
+          impact_metrics: Json | null
+          issued_at: string
+          verification_status: string | null
+        }
+        Insert: {
+          credit_amount?: number
+          entity_name: string
+          entity_type: string
+          id?: string
+          impact_metrics?: Json | null
+          issued_at?: string
+          verification_status?: string | null
+        }
+        Update: {
+          credit_amount?: number
+          entity_name?: string
+          entity_type?: string
+          id?: string
+          impact_metrics?: Json | null
+          issued_at?: string
+          verification_status?: string | null
+        }
+        Relationships: []
+      }
+      digital_twin_simulations: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          id: string
+          parameters: Json
+          park_id: string
+          results: Json | null
+          scenario_type: string
+          simulation_name: string
+          status: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          parameters?: Json
+          park_id: string
+          results?: Json | null
+          scenario_type: string
+          simulation_name: string
+          status?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          parameters?: Json
+          park_id?: string
+          results?: Json | null
+          scenario_type?: string
+          simulation_name?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
+      evidence_ledger: {
+        Row: {
+          event_data: Json
+          event_type: string
+          hash: string
+          id: string
+          location: Json | null
+          media_urls: string[] | null
+          park_id: string | null
+          previous_hash: string | null
+          timestamp: string
+          verified: boolean | null
+        }
+        Insert: {
+          event_data: Json
+          event_type: string
+          hash: string
+          id?: string
+          location?: Json | null
+          media_urls?: string[] | null
+          park_id?: string | null
+          previous_hash?: string | null
+          timestamp?: string
+          verified?: boolean | null
+        }
+        Update: {
+          event_data?: Json
+          event_type?: string
+          hash?: string
+          id?: string
+          location?: Json | null
+          media_urls?: string[] | null
+          park_id?: string | null
+          previous_hash?: string | null
+          timestamp?: string
+          verified?: boolean | null
+        }
+        Relationships: []
+      }
+      intelligence_edges: {
+        Row: {
+          created_at: string
+          id: string
+          properties: Json | null
+          relationship_type: string
+          source_id: string | null
+          target_id: string | null
+          weight: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          properties?: Json | null
+          relationship_type: string
+          source_id?: string | null
+          target_id?: string | null
+          weight?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          properties?: Json | null
+          relationship_type?: string
+          source_id?: string | null
+          target_id?: string | null
+          weight?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_edges_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_edges_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_nodes: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          last_updated: string
+          node_type: string
+          properties: Json | null
+          risk_score: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label: string
+          last_updated?: string
+          node_type: string
+          properties?: Json | null
+          risk_score?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          last_updated?: string
+          node_type?: string
+          properties?: Json | null
+          risk_score?: number | null
+        }
+        Relationships: []
+      }
+      ranger_wellness: {
+        Row: {
+          fatigue_score: number | null
+          heart_rate: number | null
+          hours_on_duty: number | null
+          id: string
+          ranger_id: string
+          recommendation: string | null
+          recorded_at: string
+          stress_level: number | null
+        }
+        Insert: {
+          fatigue_score?: number | null
+          heart_rate?: number | null
+          hours_on_duty?: number | null
+          id?: string
+          ranger_id: string
+          recommendation?: string | null
+          recorded_at?: string
+          stress_level?: number | null
+        }
+        Update: {
+          fatigue_score?: number | null
+          heart_rate?: number | null
+          hours_on_duty?: number | null
+          id?: string
+          ranger_id?: string
+          recommendation?: string | null
+          recorded_at?: string
+          stress_level?: number | null
+        }
+        Relationships: []
+      }
+      sensor_trust_scores: {
+        Row: {
+          anomaly_count: number | null
+          created_at: string
+          id: string
+          last_anomaly_at: string | null
+          location: Json | null
+          park_id: string
+          sensor_id: string
+          sensor_type: string
+          status: string | null
+          trust_score: number | null
+          updated_at: string
+        }
+        Insert: {
+          anomaly_count?: number | null
+          created_at?: string
+          id?: string
+          last_anomaly_at?: string | null
+          location?: Json | null
+          park_id: string
+          sensor_id: string
+          sensor_type: string
+          status?: string | null
+          trust_score?: number | null
+          updated_at?: string
+        }
+        Update: {
+          anomaly_count?: number | null
+          created_at?: string
+          id?: string
+          last_anomaly_at?: string | null
+          location?: Json | null
+          park_id?: string
+          sensor_id?: string
+          sensor_type?: string
+          status?: string | null
+          trust_score?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      threat_predictions: {
+        Row: {
+          confidence: number
+          contributing_factors: Json | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          location: Json
+          park_id: string
+          predicted_timeframe: string | null
+          prediction_type: string
+          risk_level: number
+          status: string | null
+        }
+        Insert: {
+          confidence: number
+          contributing_factors?: Json | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          location: Json
+          park_id: string
+          predicted_timeframe?: string | null
+          prediction_type: string
+          risk_level: number
+          status?: string | null
+        }
+        Update: {
+          confidence?: number
+          contributing_factors?: Json | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          location?: Json
+          park_id?: string
+          predicted_timeframe?: string | null
+          prediction_type?: string
+          risk_level?: number
+          status?: string | null
+        }
+        Relationships: []
+      }
+      wildlife_health_records: {
+        Row: {
+          description: string | null
+          detected_by: string
+          health_event: string
+          id: string
+          recorded_at: string
+          severity: string
+          treatment_status: string | null
+          wildlife_id: string | null
+        }
+        Insert: {
+          description?: string | null
+          detected_by?: string
+          health_event: string
+          id?: string
+          recorded_at?: string
+          severity?: string
+          treatment_status?: string | null
+          wildlife_id?: string | null
+        }
+        Update: {
+          description?: string | null
+          detected_by?: string
+          health_event?: string
+          id?: string
+          recorded_at?: string
+          severity?: string
+          treatment_status?: string | null
+          wildlife_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wildlife_health_records_wildlife_id_fkey"
+            columns: ["wildlife_id"]
+            isOneToOne: false
+            referencedRelation: "wildlife_identities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wildlife_identities: {
+        Row: {
+          biometric_signature: Json
+          created_at: string
+          current_location: Json | null
+          estimated_age: number | null
+          facial_geometry_data: Json | null
+          first_detected_at: string
+          health_status: string | null
+          horn_shape_data: Json | null
+          id: string
+          individual_name: string | null
+          last_seen_at: string
+          movement_history: Json | null
+          park_id: string
+          reproduction_status: string | null
+          species: string
+          stripe_pattern_hash: string | null
+          total_sightings: number | null
+          tusk_curvature_data: Json | null
+          updated_at: string
+        }
+        Insert: {
+          biometric_signature?: Json
+          created_at?: string
+          current_location?: Json | null
+          estimated_age?: number | null
+          facial_geometry_data?: Json | null
+          first_detected_at?: string
+          health_status?: string | null
+          horn_shape_data?: Json | null
+          id?: string
+          individual_name?: string | null
+          last_seen_at?: string
+          movement_history?: Json | null
+          park_id: string
+          reproduction_status?: string | null
+          species: string
+          stripe_pattern_hash?: string | null
+          total_sightings?: number | null
+          tusk_curvature_data?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          biometric_signature?: Json
+          created_at?: string
+          current_location?: Json | null
+          estimated_age?: number | null
+          facial_geometry_data?: Json | null
+          first_detected_at?: string
+          health_status?: string | null
+          horn_shape_data?: Json | null
+          id?: string
+          individual_name?: string | null
+          last_seen_at?: string
+          movement_history?: Json | null
+          park_id?: string
+          reproduction_status?: string | null
+          species?: string
+          stripe_pattern_hash?: string | null
+          total_sightings?: number | null
+          tusk_curvature_data?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
