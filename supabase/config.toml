@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.ai-command-assistant]
 verify_jwt = false
+
+[functions.voice-command]
+verify_jwt = false
