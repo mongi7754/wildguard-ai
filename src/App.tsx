@@ -16,6 +16,7 @@ import IntelligenceGraphPage from "./pages/IntelligenceGraphPage";
 import AutonomousCommanderPage from "./pages/AutonomousCommanderPage";
 import AIAssistantPage from "./pages/AIAssistantPage";
 import ThreatPredictionPage from "./pages/ThreatPredictionPage";
+import DigitalTwinPage from "./pages/DigitalTwinPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const App = () => (
           <Route path="/commander" element={<AutonomousCommanderPage />} />
           <Route path="/assistant" element={<AIAssistantPage />} />
           <Route path="/predictions" element={<ThreatPredictionPage />} />
+          <Route path="/digital-twin" element={<DigitalTwinPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
