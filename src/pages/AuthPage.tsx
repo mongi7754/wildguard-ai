@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Eye, Fingerprint, Radio, Satellite, Lock } from 'lucide-react';
+import { Shield, Eye, Fingerprint, Radio, Satellite, Lock, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 import faunoraWallpaper from '@/assets/faunora-wallpaper.jpg';
 
 export default function AuthPage() {
@@ -14,14 +15,8 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [generatedOtp, setGeneratedOtp] = useState('');
   const { toast } = useToast();
   const navigate = useNavigate();
-
-  // Generate random 6-digit OTP
-  const generateOtp = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  };
 
   const handleCredentialSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,22 +30,48 @@ export default function AuthPage() {
       return;
     }
 
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast({
+        title: "Invalid Email",
+        description: "Please enter a valid email address",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsLoading(true);
     
-    // Simulate credential verification
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    const newOtp = generateOtp();
-    setGeneratedOtp(newOtp);
-    
-    // In production, this would be sent via SMS/Email
-    toast({
-      title: "OTP Sent",
-      description: `Your verification code is: ${newOtp}`,
-    });
-    
-    setStep('otp');
-    setIsLoading(false);
+    try {
+      // Send OTP via edge function
+      const { data, error } = await supabase.functions.invoke('send-otp', {
+        body: { email, action: 'send' }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.success) {
+        toast({
+          title: "OTP Sent",
+          description: `Verification code sent to ${email}`,
+        });
+        setStep('otp');
+      } else {
+        throw new Error(data?.error || 'Failed to send OTP');
+      }
+    } catch (error: any) {
+      console.error('OTP send error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send verification code",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleOtpVerify = async () => {
@@ -64,34 +85,75 @@ export default function AuthPage() {
     }
 
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    if (otp === generatedOtp) {
-      toast({
-        title: "Access Granted",
-        description: "Welcome to FAUNORA Command Center",
+    
+    try {
+      // Verify OTP via edge function
+      const { data, error } = await supabase.functions.invoke('send-otp', {
+        body: { email, action: 'verify', otp }
       });
-      localStorage.setItem('faunora_authenticated', 'true');
-      navigate('/');
-    } else {
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.success) {
+        toast({
+          title: "Access Granted",
+          description: "Welcome to FAUNORA Command Center",
+        });
+        localStorage.setItem('faunora_authenticated', 'true');
+        localStorage.setItem('faunora_user_email', email);
+        navigate('/');
+      } else {
+        toast({
+          title: "Verification Failed",
+          description: data?.error || "Invalid verification code",
+          variant: "destructive"
+        });
+      }
+    } catch (error: any) {
+      console.error('OTP verify error:', error);
       toast({
-        title: "Invalid Code",
-        description: "The verification code is incorrect",
+        title: "Error",
+        description: error.message || "Verification failed",
         variant: "destructive"
       });
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
-  const resendOtp = () => {
-    const newOtp = generateOtp();
-    setGeneratedOtp(newOtp);
+  const resendOtp = async () => {
+    setIsLoading(true);
     setOtp('');
-    toast({
-      title: "New OTP Sent",
-      description: `Your new verification code is: ${newOtp}`,
-    });
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('send-otp', {
+        body: { email, action: 'send' }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.success) {
+        toast({
+          title: "New OTP Sent",
+          description: `New verification code sent to ${email}`,
+        });
+      } else {
+        throw new Error(data?.error || 'Failed to send OTP');
+      }
+    } catch (error: any) {
+      console.error('OTP resend error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to resend code",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -253,11 +315,12 @@ export default function AuthPage() {
                   className="space-y-6"
                 >
                   <div className="text-center mb-6">
-                    <Shield className="w-8 h-8 text-primary mx-auto mb-2" />
-                    <h2 className="font-display text-xl text-foreground">VERIFICATION CODE</h2>
+                    <Mail className="w-8 h-8 text-primary mx-auto mb-2" />
+                    <h2 className="font-display text-xl text-foreground">EMAIL VERIFICATION</h2>
                     <p className="text-muted-foreground text-sm mt-1">
-                      Enter the 6-digit code sent to your device
+                      Enter the 6-digit code sent to your email
                     </p>
+                    <p className="text-primary text-xs mt-2">{email}</p>
                   </div>
 
                   <div className="flex justify-center">
@@ -296,7 +359,10 @@ export default function AuthPage() {
                   <div className="flex justify-between items-center text-sm">
                     <button
                       type="button"
-                      onClick={() => setStep('credentials')}
+                      onClick={() => {
+                        setStep('credentials');
+                        setOtp('');
+                      }}
                       className="text-muted-foreground hover:text-foreground transition-colors"
                     >
                       ← Back
@@ -304,7 +370,8 @@ export default function AuthPage() {
                     <button
                       type="button"
                       onClick={resendOtp}
-                      className="text-primary hover:text-primary/80 transition-colors"
+                      disabled={isLoading}
+                      className="text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
                     >
                       Resend Code
                     </button>
