@@ -36,7 +36,7 @@ export function Header({ title, showBackButton }: HeaderProps) {
                 <Shield className="w-5 h-5 text-primary relative z-10" />
               </motion.div>
               <span className="font-display text-sm font-bold tracking-wider text-glow">
-                WILDGUARD
+                FAUNORA
               </span>
             </Link>
           )}

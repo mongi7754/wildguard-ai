@@ -20,6 +20,7 @@ import AIAssistantPage from "./pages/AIAssistantPage";
 import ThreatPredictionPage from "./pages/ThreatPredictionPage";
 import DigitalTwinPage from "./pages/DigitalTwinPage";
 import VoiceCommandPage from "./pages/VoiceCommandPage";
+import CyberSecurityPage from "./pages/CyberSecurityPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -47,6 +48,7 @@ const App = () => (
           <Route path="/predictions" element={<ProtectedRoute><ThreatPredictionPage /></ProtectedRoute>} />
           <Route path="/digital-twin" element={<ProtectedRoute><DigitalTwinPage /></ProtectedRoute>} />
           <Route path="/voice" element={<ProtectedRoute><VoiceCommandPage /></ProtectedRoute>} />
+          <Route path="/cyber-security" element={<ProtectedRoute><CyberSecurityPage /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
