@@ -147,7 +147,7 @@ export default function SettingsPage() {
 
         {/* Version Info */}
         <p className="text-center text-xs text-muted-foreground">
-          WildGuard AI v2.4.1 • Build 2024.12
+          FAUNORA Intelligence System v3.0.0 • Build 2024.12
         </p>
       </div>
     </AppLayout>

@@ -54,7 +54,7 @@ export default function Dashboard() {
               <span className="text-xs font-medium text-primary">SYSTEM ACTIVE</span>
             </div>
             <h2 className="font-display text-xl font-bold text-foreground">
-              Serengeti Reserve
+              FAUNORA Command
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
               {dashboardStats.areaMonitored.toLocaleString()} km² monitored • Last sync: 2 min ago
@@ -179,7 +179,7 @@ export default function Dashboard() {
           transition={{ delay: 0.5 }}
         >
           <h3 className="font-display font-semibold text-sm mb-3">Quick Actions</h3>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Button variant="tactical" size="lg" className="h-auto py-4 flex-col" asChild>
               <Link to="/detect">
                 <Scan className="w-6 h-6 mb-2" />
@@ -202,6 +202,18 @@ export default function Dashboard() {
               <Link to="/analytics">
                 <TrendingUp className="w-6 h-6 mb-2" />
                 <span className="text-xs">Analytics</span>
+              </Link>
+            </Button>
+            <Button variant="tactical" size="lg" className="h-auto py-4 flex-col" asChild>
+              <Link to="/cyber-security">
+                <Activity className="w-6 h-6 mb-2" />
+                <span className="text-xs">Cyber Defense</span>
+              </Link>
+            </Button>
+            <Button variant="tactical" size="lg" className="h-auto py-4 flex-col" asChild>
+              <Link to="/commander">
+                <Radar className="w-6 h-6 mb-2" />
+                <span className="text-xs">Commander</span>
               </Link>
             </Button>
           </div>
