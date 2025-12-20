@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Shield,
@@ -16,13 +16,21 @@ import {
   RefreshCw,
   Terminal,
   Fingerprint,
-  Radio
+  Radio,
+  Send,
+  Loader2,
+  Bot,
+  User,
+  MessageSquare
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
 interface SecurityEvent {
@@ -40,6 +48,13 @@ interface SystemHealth {
   status: 'healthy' | 'warning' | 'critical';
   uptime: number;
   lastCheck: Date;
+}
+
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
 }
 
 const mockEvents: SecurityEvent[] = [
@@ -72,11 +87,55 @@ const statusIcons = {
   critical: <AlertTriangle className="w-4 h-4 text-danger" />,
 };
 
+const suggestedQueries = [
+  "Run a security scan",
+  "What's the current threat status?",
+  "Generate a security report",
+  "Check for vulnerabilities",
+  "Show incident response status",
+];
+
 export default function CyberSecurityPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [threatLevel, setThreatLevel] = useState(12);
   const [events, setEvents] = useState(mockEvents);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  
+  // AICSDO Chat State
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: '1',
+      role: 'assistant',
+      content: `I am the AI Cyber Security Defensive Officer (AICSDO), your professional, certified, and government-authorized cybersecurity authority.
+
+My role is strictly DEFENSIVE. I protect critical national digital infrastructure by ensuring:
+• Confidentiality, Integrity, Availability
+• Resilience and Trust
+
+I provide:
+• Continuous defensive monitoring
+• Threat prevention & hardening
+• Incident detection & response
+• Digital forensic readiness
+• AI & data protection
+• Cloud & infrastructure security
+
+How may I assist with your security needs?`,
+      timestamp: new Date()
+    }
+  ]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
   
   const runSecurityScan = () => {
     setIsScanning(true);
@@ -102,212 +161,394 @@ export default function CyberSecurityPage() {
     return `${Math.floor(hours / 24)}d ago`;
   };
 
+  const sendMessage = async (text: string) => {
+    if (!text.trim()) return;
+
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: text,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('cyber-security-officer', {
+        body: { query: text }
+      });
+
+      if (error) throw error;
+
+      const assistantMessage: Message = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: data?.response || "I couldn't process that security request. Please try again.",
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('AICSDO error:', error);
+      
+      const errorMessage: Message = {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: error instanceof Error && error.message.includes('429') 
+          ? "AICSDO is currently experiencing high demand. Please try again in a moment."
+          : error instanceof Error && error.message.includes('402')
+          ? "AICSDO requires additional credits. Please contact your administrator."
+          : "Security query failed. Please try again.",
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendMessage(input);
+  };
+
   return (
     <AppLayout title="Cyber Defense">
-      <div className="px-4 py-4 space-y-4">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center"
-        >
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/20 mb-3">
-            <Shield className="w-8 h-8 text-primary" />
-          </div>
-          <h2 className="font-display text-xl font-bold">Cyber Defense Center</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            AI-powered security monitoring & threat response
-          </p>
-        </motion.div>
-
-        {/* Security Status Overview */}
-        <div className="grid grid-cols-3 gap-3">
-          <Card variant="glow" className="p-3 text-center">
-            <ShieldCheck className="w-6 h-6 text-success mx-auto mb-1" />
-            <p className="text-xl font-bold text-success">SECURE</p>
-            <p className="text-[10px] text-muted-foreground">System Status</p>
-          </Card>
-          <Card variant="tactical" className="p-3 text-center">
-            <Activity className="w-6 h-6 text-primary mx-auto mb-1" />
-            <p className="text-xl font-bold">{threatLevel}%</p>
-            <p className="text-[10px] text-muted-foreground">Threat Level</p>
-          </Card>
-          <Card variant="tactical" className="p-3 text-center">
-            <Eye className="w-6 h-6 text-accent mx-auto mb-1" />
-            <p className="text-xl font-bold">24/7</p>
-            <p className="text-[10px] text-muted-foreground">Monitoring</p>
-          </Card>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
+        <div className="px-4 pt-2">
+          <TabsList className="w-full">
+            <TabsTrigger value="dashboard" className="flex-1">
+              <Shield className="w-4 h-4 mr-2" />
+              Dashboard
+            </TabsTrigger>
+            <TabsTrigger value="aicsdo" className="flex-1">
+              <MessageSquare className="w-4 h-4 mr-2" />
+              AICSDO
+            </TabsTrigger>
+          </TabsList>
         </div>
 
-        {/* Security Scan */}
-        <Card variant="tactical">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Terminal className="w-4 h-4 text-primary" />
-                Security Scanner
-              </CardTitle>
-              <Badge variant="success">Auto-Scan: ON</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Button 
-              variant="glow" 
-              className="w-full"
-              onClick={runSecurityScan}
-              disabled={isScanning}
+        <TabsContent value="dashboard" className="mt-0">
+          <div className="px-4 py-4 space-y-4">
+            {/* Header */}
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center"
             >
-              <RefreshCw className={cn("w-4 h-4 mr-2", isScanning && "animate-spin")} />
-              {isScanning ? 'Scanning...' : 'Run Security Scan'}
-            </Button>
-            
-            <AnimatePresence>
-              {isScanning && (
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/20 mb-3">
+                <Shield className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="font-display text-xl font-bold">Cyber Defense Center</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                AICSDO-powered security monitoring & threat response
+              </p>
+            </motion.div>
+
+            {/* Security Status Overview */}
+            <div className="grid grid-cols-3 gap-3">
+              <Card variant="glow" className="p-3 text-center">
+                <ShieldCheck className="w-6 h-6 text-success mx-auto mb-1" />
+                <p className="text-xl font-bold text-success">SECURE</p>
+                <p className="text-[10px] text-muted-foreground">System Status</p>
+              </Card>
+              <Card variant="tactical" className="p-3 text-center">
+                <Activity className="w-6 h-6 text-primary mx-auto mb-1" />
+                <p className="text-xl font-bold">{threatLevel}%</p>
+                <p className="text-[10px] text-muted-foreground">Threat Level</p>
+              </Card>
+              <Card variant="tactical" className="p-3 text-center">
+                <Eye className="w-6 h-6 text-accent mx-auto mb-1" />
+                <p className="text-xl font-bold">24/7</p>
+                <p className="text-[10px] text-muted-foreground">Monitoring</p>
+              </Card>
+            </div>
+
+            {/* Security Scan */}
+            <Card variant="tactical">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-primary" />
+                    AICSDO Security Scanner
+                  </CardTitle>
+                  <Badge variant="success">Auto-Scan: ON</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button 
+                  variant="glow" 
+                  className="w-full"
+                  onClick={runSecurityScan}
+                  disabled={isScanning}
+                >
+                  <RefreshCw className={cn("w-4 h-4 mr-2", isScanning && "animate-spin")} />
+                  {isScanning ? 'Scanning...' : 'Run Security Scan'}
+                </Button>
+                
+                <AnimatePresence>
+                  {isScanning && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                    >
+                      <Progress value={scanProgress} className="h-2" />
+                      <p className="text-xs text-muted-foreground text-center mt-2">
+                        AICSDO scanning infrastructure... {scanProgress}%
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </CardContent>
+            </Card>
+
+            {/* System Health Grid */}
+            <Card variant="tactical">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Server className="w-4 h-4 text-primary" />
+                  Infrastructure Health
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-2">
+                  {systemHealth.map((system) => (
+                    <div
+                      key={system.name}
+                      className={cn(
+                        "p-3 rounded-lg border transition-colors",
+                        system.status === 'healthy' && "bg-success/5 border-success/30",
+                        system.status === 'warning' && "bg-accent/10 border-accent/30",
+                        system.status === 'critical' && "bg-danger/10 border-danger/30"
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium truncate">{system.name}</span>
+                        {statusIcons[system.status]}
+                      </div>
+                      <p className="text-lg font-bold">{system.uptime}%</p>
+                      <p className="text-[10px] text-muted-foreground">Uptime</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Security Metrics */}
+            <div className="grid grid-cols-2 gap-3">
+              <Card variant="tactical" className="p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <Lock className="w-5 h-5 text-primary" />
+                  <span className="text-sm font-medium">Zero-Trust</span>
+                </div>
+                <Badge variant="success" className="w-full justify-center">ENFORCED</Badge>
+              </Card>
+              <Card variant="tactical" className="p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <Key className="w-5 h-5 text-primary" />
+                  <span className="text-sm font-medium">Encryption</span>
+                </div>
+                <Badge variant="success" className="w-full justify-center">AES-256</Badge>
+              </Card>
+              <Card variant="tactical" className="p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <Fingerprint className="w-5 h-5 text-primary" />
+                  <span className="text-sm font-medium">Auth Status</span>
+                </div>
+                <Badge variant="success" className="w-full justify-center">MFA ACTIVE</Badge>
+              </Card>
+              <Card variant="tactical" className="p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <Radio className="w-5 h-5 text-primary" />
+                  <span className="text-sm font-medium">Firewall</span>
+                </div>
+                <Badge variant="success" className="w-full justify-center">ONLINE</Badge>
+              </Card>
+            </div>
+
+            {/* Recent Security Events */}
+            <Card variant="tactical">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-accent" />
+                    Security Events
+                  </CardTitle>
+                  <Badge variant="tactical">{events.length} events</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2 max-h-64 overflow-y-auto">
+                {events.map((event, i) => (
+                  <motion.div
+                    key={event.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className={cn(
+                      "p-3 rounded-lg border flex items-start gap-3",
+                      severityColors[event.severity]
+                    )}
+                  >
+                    <div className="shrink-0 mt-0.5">
+                      {event.type === 'threat_detected' && <ShieldAlert className="w-4 h-4" />}
+                      {event.type === 'access_attempt' && <Lock className="w-4 h-4" />}
+                      {event.type === 'anomaly' && <Activity className="w-4 h-4" />}
+                      {event.type === 'resolved' && <ShieldCheck className="w-4 h-4" />}
+                      {event.type === 'info' && <Eye className="w-4 h-4" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{event.message}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] opacity-70">{event.source}</span>
+                        <span className="text-[10px] opacity-50">•</span>
+                        <span className="text-[10px] opacity-50">{getTimeAgo(event.timestamp)}</span>
+                      </div>
+                    </div>
+                    <Badge 
+                      variant={event.status === 'resolved' ? 'success' : event.status === 'investigating' ? 'warning' : 'danger'}
+                      className="text-[10px] shrink-0"
+                    >
+                      {event.status}
+                    </Badge>
+                  </motion.div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* AI Defense Status */}
+            <Card variant="glow" className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-lg bg-primary/20">
+                  <Shield className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">AICSDO Active</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    AI Cyber Security Defensive Officer is continuously monitoring 
+                    all systems for threats, anomalies, and unauthorized access. 
+                    Zero-trust architecture enforced. Operating under national law 
+                    and international best practices.
+                  </p>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="aicsdo" className="mt-0 h-[calc(100vh-10rem)]">
+          <div className="flex flex-col h-full">
+            {/* AICSDO Header */}
+            <div className="px-4 py-3 bg-gradient-to-r from-primary/10 to-danger/10 border-b border-primary/20">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/20">
+                  <Shield className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">AICSDO Interface</p>
+                  <p className="text-[10px] text-muted-foreground">AI Cyber Security Defensive Officer</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 scrollbar-hide">
+              {messages.map((message, i) => (
+                <motion.div
+                  key={message.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={cn(
+                    "flex gap-3",
+                    message.role === 'user' && "flex-row-reverse"
+                  )}
+                >
+                  <div className={cn(
+                    "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
+                    message.role === 'assistant' ? "bg-primary/20" : "bg-secondary"
+                  )}>
+                    {message.role === 'assistant' ? (
+                      <Shield className="w-4 h-4 text-primary" />
+                    ) : (
+                      <User className="w-4 h-4 text-muted-foreground" />
+                    )}
+                  </div>
+                  <Card variant={message.role === 'assistant' ? 'tactical' : 'glow'} 
+                    className={cn(
+                      "max-w-[80%] p-3",
+                      message.role === 'user' && "bg-primary/10"
+                    )}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    <p className="text-[10px] text-muted-foreground mt-2">
+                      {message.timestamp.toLocaleTimeString()}
+                    </p>
+                  </Card>
+                </motion.div>
+              ))}
+
+              {isLoading && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
+                  className="flex gap-3"
                 >
-                  <Progress value={scanProgress} className="h-2" />
-                  <p className="text-xs text-muted-foreground text-center mt-2">
-                    Scanning infrastructure... {scanProgress}%
-                  </p>
+                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                    <Shield className="w-4 h-4 text-primary" />
+                  </div>
+                  <Card variant="tactical" className="p-3">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                      <span className="text-sm text-muted-foreground">AICSDO processing...</span>
+                    </div>
+                  </Card>
                 </motion.div>
               )}
-            </AnimatePresence>
-          </CardContent>
-        </Card>
 
-        {/* System Health Grid */}
-        <Card variant="tactical">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Server className="w-4 h-4 text-primary" />
-              Infrastructure Health
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-2">
-              {systemHealth.map((system) => (
-                <div
-                  key={system.name}
-                  className={cn(
-                    "p-3 rounded-lg border transition-colors",
-                    system.status === 'healthy' && "bg-success/5 border-success/30",
-                    system.status === 'warning' && "bg-accent/10 border-accent/30",
-                    system.status === 'critical' && "bg-danger/10 border-danger/30"
-                  )}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium truncate">{system.name}</span>
-                    {statusIcons[system.status]}
-                  </div>
-                  <p className="text-lg font-bold">{system.uptime}%</p>
-                  <p className="text-[10px] text-muted-foreground">Uptime</p>
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Suggested Queries */}
+            {messages.length === 1 && (
+              <div className="px-4 pb-2">
+                <p className="text-xs text-muted-foreground mb-2">Suggested queries:</p>
+                <div className="flex flex-wrap gap-2">
+                  {suggestedQueries.map((query, i) => (
+                    <Button
+                      key={i}
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => sendMessage(query)}
+                    >
+                      {query}
+                    </Button>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            )}
 
-        {/* Security Metrics */}
-        <div className="grid grid-cols-2 gap-3">
-          <Card variant="tactical" className="p-4">
-            <div className="flex items-center gap-3 mb-2">
-              <Lock className="w-5 h-5 text-primary" />
-              <span className="text-sm font-medium">Zero-Trust</span>
-            </div>
-            <Badge variant="success" className="w-full justify-center">ENFORCED</Badge>
-          </Card>
-          <Card variant="tactical" className="p-4">
-            <div className="flex items-center gap-3 mb-2">
-              <Key className="w-5 h-5 text-primary" />
-              <span className="text-sm font-medium">Encryption</span>
-            </div>
-            <Badge variant="success" className="w-full justify-center">AES-256</Badge>
-          </Card>
-          <Card variant="tactical" className="p-4">
-            <div className="flex items-center gap-3 mb-2">
-              <Fingerprint className="w-5 h-5 text-primary" />
-              <span className="text-sm font-medium">Auth Status</span>
-            </div>
-            <Badge variant="success" className="w-full justify-center">MFA ACTIVE</Badge>
-          </Card>
-          <Card variant="tactical" className="p-4">
-            <div className="flex items-center gap-3 mb-2">
-              <Radio className="w-5 h-5 text-primary" />
-              <span className="text-sm font-medium">Firewall</span>
-            </div>
-            <Badge variant="success" className="w-full justify-center">ONLINE</Badge>
-          </Card>
-        </div>
-
-        {/* Recent Security Events */}
-        <Card variant="tactical">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-accent" />
-                Security Events
-              </CardTitle>
-              <Badge variant="tactical">{events.length} events</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2 max-h-64 overflow-y-auto">
-            {events.map((event, i) => (
-              <motion.div
-                key={event.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className={cn(
-                  "p-3 rounded-lg border flex items-start gap-3",
-                  severityColors[event.severity]
-                )}
-              >
-                <div className="shrink-0 mt-0.5">
-                  {event.type === 'threat_detected' && <ShieldAlert className="w-4 h-4" />}
-                  {event.type === 'access_attempt' && <Lock className="w-4 h-4" />}
-                  {event.type === 'anomaly' && <Activity className="w-4 h-4" />}
-                  {event.type === 'resolved' && <ShieldCheck className="w-4 h-4" />}
-                  {event.type === 'info' && <Eye className="w-4 h-4" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{event.message}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] opacity-70">{event.source}</span>
-                    <span className="text-[10px] opacity-50">•</span>
-                    <span className="text-[10px] opacity-50">{getTimeAgo(event.timestamp)}</span>
-                  </div>
-                </div>
-                <Badge 
-                  variant={event.status === 'resolved' ? 'success' : event.status === 'investigating' ? 'warning' : 'danger'}
-                  className="text-[10px] shrink-0"
-                >
-                  {event.status}
-                </Badge>
-              </motion.div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* AI Defense Status */}
-        <Card variant="glow" className="p-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-primary/20">
-              <Shield className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">AI Cyber Defense Active</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                AICSDO (AI Cyber Security Defense Officer) is continuously monitoring 
-                all systems for threats, anomalies, and unauthorized access attempts. 
-                Zero-trust architecture enforced across all endpoints.
-              </p>
+            {/* Input */}
+            <div className="p-4 border-t border-border bg-card/50 backdrop-blur-sm">
+              <form onSubmit={handleSubmit} className="flex gap-2">
+                <Input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask AICSDO..."
+                  disabled={isLoading}
+                  className="flex-1"
+                />
+                <Button type="submit" disabled={isLoading || !input.trim()}>
+                  <Send className="w-4 h-4" />
+                </Button>
+              </form>
             </div>
           </div>
-        </Card>
-      </div>
+        </TabsContent>
+      </Tabs>
     </AppLayout>
   );
 }

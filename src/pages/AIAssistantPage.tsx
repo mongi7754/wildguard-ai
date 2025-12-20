@@ -7,7 +7,9 @@ import {
   MicOff,
   Bot,
   User,
-  Loader2
+  Loader2,
+  Shield,
+  Leaf
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card } from '@/components/ui/card';
@@ -25,11 +27,12 @@ interface Message {
 }
 
 const suggestedQueries = [
+  "What is the current national park status?",
   "Where is the nearest elephant herd?",
-  "Any active threats in sector 7?",
-  "How many drones are currently active?",
+  "Show me wildlife movement patterns",
   "What's the fire risk level today?",
-  "Show me the latest detection logs",
+  "Generate a daily intelligence brief",
+  "Environmental risk assessment",
 ];
 
 export default function AIAssistantPage() {
@@ -38,7 +41,17 @@ export default function AIAssistantPage() {
     {
       id: '1',
       role: 'assistant',
-      content: "I'm WildGuard AI Command Assistant. How can I help you with field operations today? You can ask about wildlife locations, threat status, resource availability, or get navigation assistance.",
+      content: `I am FAUNORA - the National Environmental and Wildlife Intelligence System.
+
+I operate as a sovereign, ethical, and autonomous AI platform supporting government decision-making for wildlife conservation, public safety, climate resilience, and national natural asset protection.
+
+How may I assist you today? I can provide:
+• National aerial situation awareness
+• Wildlife intelligence & movement tracking
+• Incident, risk & early warning management
+• Climate & environmental analysis
+• Autonomous decision support
+• Government dashboard & reporting`,
       timestamp: new Date()
     }
   ]);
@@ -85,13 +98,15 @@ export default function AIAssistantPage() {
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      console.error('Assistant error:', error);
+      console.error('FAUNORA error:', error);
       
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
         role: 'assistant',
         content: error instanceof Error && error.message.includes('429') 
-          ? "I'm currently experiencing high demand. Please try again in a moment."
+          ? "FAUNORA is currently experiencing high demand. Please try again in a moment."
+          : error instanceof Error && error.message.includes('402')
+          ? "FAUNORA requires additional credits. Please contact your administrator."
           : "I apologize, I encountered an error processing your request. Please try again.",
         timestamp: new Date()
       };
@@ -118,8 +133,21 @@ export default function AIAssistantPage() {
   };
 
   return (
-    <AppLayout title="AI Assistant">
+    <AppLayout title="FAUNORA">
       <div className="flex flex-col h-[calc(100vh-8rem)]">
+        {/* Header Banner */}
+        <div className="px-4 py-3 bg-gradient-to-r from-primary/10 to-success/10 border-b border-primary/20">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/20">
+              <Leaf className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">FAUNORA Intelligence System</p>
+              <p className="text-[10px] text-muted-foreground">National Environmental & Wildlife Command</p>
+            </div>
+          </div>
+        </div>
+
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 scrollbar-hide">
           {messages.map((message, i) => (
@@ -138,7 +166,7 @@ export default function AIAssistantPage() {
                 message.role === 'assistant' ? "bg-primary/20" : "bg-secondary"
               )}>
                 {message.role === 'assistant' ? (
-                  <Bot className="w-4 h-4 text-primary" />
+                  <Leaf className="w-4 h-4 text-primary" />
                 ) : (
                   <User className="w-4 h-4 text-muted-foreground" />
                 )}
@@ -164,12 +192,12 @@ export default function AIAssistantPage() {
               className="flex gap-3"
             >
               <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                <Bot className="w-4 h-4 text-primary" />
+                <Leaf className="w-4 h-4 text-primary" />
               </div>
               <Card variant="tactical" className="p-3">
                 <div className="flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                  <span className="text-sm text-muted-foreground">Thinking...</span>
+                  <span className="text-sm text-muted-foreground">FAUNORA processing...</span>
                 </div>
               </Card>
             </motion.div>
@@ -213,7 +241,7 @@ export default function AIAssistantPage() {
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask WildGuard AI..."
+              placeholder="Ask FAUNORA..."
               disabled={isLoading}
               className="flex-1"
             />
