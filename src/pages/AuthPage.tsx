@@ -1,19 +1,18 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Eye, Fingerprint, Radio, Satellite, Lock, Mail } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Shield, Eye, Fingerprint, Radio, Satellite, Lock, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import faunoraWallpaper from '@/assets/faunora-wallpaper.jpg';
 
 export default function AuthPage() {
-  const [step, setStep] = useState<'credentials' | 'otp'>('credentials');
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [otp, setOtp] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -37,16 +36,14 @@ export default function AuthPage() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const handleCredentialSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const validateForm = (): boolean => {
     if (!email || !password) {
       toast({
         title: "Validation Error",
         description: "Please enter both email and password",
         variant: "destructive"
       });
-      return;
+      return false;
     }
 
     // Basic email validation
@@ -57,7 +54,7 @@ export default function AuthPage() {
         description: "Please enter a valid email address",
         variant: "destructive"
       });
-      return;
+      return false;
     }
 
     // Password validation
@@ -67,166 +64,59 @@ export default function AuthPage() {
         description: "Password must be at least 6 characters",
         variant: "destructive"
       });
-      return;
+      return false;
     }
 
-    setIsLoading(true);
-    
-    try {
-      // Send OTP via edge function
-      const { data, error } = await supabase.functions.invoke('send-otp', {
-        body: { email, action: 'send' }
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      if (data?.success) {
-        toast({
-          title: "OTP Sent",
-          description: `Verification code sent to ${email}`,
-        });
-        setStep('otp');
-      } else {
-        throw new Error(data?.error || 'Failed to send OTP');
-      }
-    } catch (error: any) {
-      console.error('OTP send error:', error);
+    if (mode === 'signup' && password !== confirmPassword) {
       toast({
-        title: "Error",
-        description: error.message || "Failed to send verification code",
+        title: "Password Mismatch",
+        description: "Passwords do not match",
         variant: "destructive"
       });
-    } finally {
-      setIsLoading(false);
+      return false;
     }
+
+    return true;
   };
 
-  const handleOtpVerify = async () => {
-    if (otp.length !== 6) {
-      toast({
-        title: "Invalid OTP",
-        description: "Please enter the complete 6-digit code",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Validate OTP format (numbers only)
-    if (!/^\d{6}$/.test(otp)) {
-      toast({
-        title: "Invalid OTP",
-        description: "OTP must be 6 digits",
-        variant: "destructive"
-      });
-      return;
-    }
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateForm()) return;
 
     setIsLoading(true);
     
     try {
-      // Verify OTP via edge function
-      const { data, error } = await supabase.functions.invoke('send-otp', {
-        body: { email, action: 'verify', otp }
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
       });
 
       if (error) {
-        throw error;
-      }
-
-      if (data?.success) {
-        // If we got a token back, use signInWithOtp flow
-        // Otherwise, try to sign in with password or create account
-        
-        try {
-          // First try to sign in with password
-          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-            email,
-            password
-          });
-
-          if (signInError) {
-            // If sign in failed, try to sign up
-            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-              email,
-              password,
-              options: {
-                emailRedirectTo: `${window.location.origin}/`,
-                data: { verified_via: 'otp' }
-              }
-            });
-
-            if (signUpError) {
-              // If it's "User already registered", try password reset flow
-              if (signUpError.message?.includes('already registered')) {
-                // User exists but password is wrong - inform them
-                toast({
-                  title: "Account Exists",
-                  description: "An account with this email exists. Please use the correct password.",
-                  variant: "destructive"
-                });
-                setStep('credentials');
-                setOtp('');
-                return;
-              }
-              throw signUpError;
-            }
-
-            // Check if session was created
-            if (signUpData.session) {
-              toast({
-                title: "Access Granted",
-                description: "Welcome to FAUNORA Command Center",
-              });
-              navigate('/');
-              return;
-            }
-
-            // If no session but user created, sign them in
-            if (signUpData.user) {
-              const { error: finalSignInError } = await supabase.auth.signInWithPassword({
-                email,
-                password
-              });
-
-              if (!finalSignInError) {
-                toast({
-                  title: "Access Granted",
-                  description: "Welcome to FAUNORA Command Center",
-                });
-                navigate('/');
-                return;
-              }
-            }
-          } else if (signInData.session) {
-            toast({
-              title: "Access Granted",
-              description: "Welcome to FAUNORA Command Center",
-            });
-            navigate('/');
-            return;
-          }
-        } catch (authError: any) {
-          console.error('Auth error:', authError);
+        if (error.message.includes('Invalid login credentials')) {
           toast({
-            title: "Authentication Error",
-            description: authError.message || "Failed to authenticate",
+            title: "Login Failed",
+            description: "Invalid email or password. Please try again.",
             variant: "destructive"
           });
+        } else {
+          throw error;
         }
-      } else {
+        return;
+      }
+
+      if (data.session) {
         toast({
-          title: "Verification Failed",
-          description: data?.error || "Invalid verification code",
-          variant: "destructive"
+          title: "Access Granted",
+          description: "Welcome to FAUNORA Command Center",
         });
+        navigate('/');
       }
     } catch (error: any) {
-      console.error('OTP verify error:', error);
+      console.error('Login error:', error);
       toast({
         title: "Error",
-        description: error.message || "Verification failed",
+        description: error.message || "Login failed",
         variant: "destructive"
       });
     } finally {
@@ -234,32 +124,56 @@ export default function AuthPage() {
     }
   };
 
-  const resendOtp = async () => {
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateForm()) return;
+
     setIsLoading(true);
-    setOtp('');
     
     try {
-      const { data, error } = await supabase.functions.invoke('send-otp', {
-        body: { email, action: 'send' }
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`
+        }
       });
 
       if (error) {
-        throw error;
+        if (error.message.includes('already registered')) {
+          toast({
+            title: "Account Exists",
+            description: "An account with this email already exists. Please login instead.",
+            variant: "destructive"
+          });
+          setMode('login');
+        } else {
+          throw error;
+        }
+        return;
       }
 
-      if (data?.success) {
+      if (data.session) {
         toast({
-          title: "New OTP Sent",
-          description: `New verification code sent to ${email}`,
+          title: "Access Granted",
+          description: "Welcome to FAUNORA Command Center",
         });
-      } else {
-        throw new Error(data?.error || 'Failed to send OTP');
+        navigate('/');
+      } else if (data.user) {
+        toast({
+          title: "Registration Successful",
+          description: "You can now login with your credentials",
+        });
+        setMode('login');
+        setPassword('');
+        setConfirmPassword('');
       }
     } catch (error: any) {
-      console.error('OTP resend error:', error);
+      console.error('Signup error:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to resend code",
+        description: error.message || "Registration failed",
         variant: "destructive"
       });
     } finally {
@@ -355,157 +269,146 @@ export default function AuthPage() {
               </motion.div>
             </div>
 
-            <AnimatePresence mode="wait">
-              {step === 'credentials' ? (
-                <motion.form
-                  key="credentials"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  onSubmit={handleCredentialSubmit}
-                  className="space-y-6"
-                >
-                  <div className="text-center mb-6">
-                    <Lock className="w-8 h-8 text-primary mx-auto mb-2" />
-                    <h2 className="font-display text-xl text-foreground">SECURE ACCESS</h2>
-                    <p className="text-muted-foreground text-sm mt-1">
-                      Enter your credentials to continue
-                    </p>
-                  </div>
+            <motion.form
+              key={mode}
+              initial={{ opacity: 0, x: mode === 'login' ? -20 : 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              onSubmit={mode === 'login' ? handleLogin : handleSignup}
+              className="space-y-6"
+            >
+              <div className="text-center mb-6">
+                {mode === 'login' ? (
+                  <Lock className="w-8 h-8 text-primary mx-auto mb-2" />
+                ) : (
+                  <UserPlus className="w-8 h-8 text-primary mx-auto mb-2" />
+                )}
+                <h2 className="font-display text-xl text-foreground">
+                  {mode === 'login' ? 'SECURE ACCESS' : 'CREATE ACCOUNT'}
+                </h2>
+                <p className="text-muted-foreground text-sm mt-1">
+                  {mode === 'login' 
+                    ? 'Enter your credentials to continue' 
+                    : 'Register for system access'}
+                </p>
+              </div>
 
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">
-                        Operator Email
-                      </label>
-                      <Input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="operator@faunora.gov"
-                        className="bg-muted/50 border-border/50 focus:border-primary"
-                        autoComplete="email"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">
-                        Access Key
-                      </label>
-                      <Input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••••••"
-                        className="bg-muted/50 border-border/50 focus:border-primary"
-                        autoComplete="current-password"
-                      />
-                    </div>
-                  </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">
+                    Operator Email
+                  </label>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="operator@faunora.gov"
+                    className="bg-muted/50 border-border/50 focus:border-primary"
+                    autoComplete="email"
+                  />
+                </div>
+                
+                <div>
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">
+                    Access Key
+                  </label>
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    className="bg-muted/50 border-border/50 focus:border-primary"
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  />
+                </div>
 
-                  <Button 
-                    type="submit" 
-                    className="w-full h-12 font-display tracking-wider"
-                    disabled={isLoading}
+                {mode === 'signup' && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
                   >
-                    {isLoading ? (
-                      <motion.div
-                        className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                      />
-                    ) : (
-                      "AUTHENTICATE"
-                    )}
-                  </Button>
-                </motion.form>
-              ) : (
-                <motion.div
-                  key="otp"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  className="space-y-6"
+                    <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">
+                      Confirm Access Key
+                    </label>
+                    <Input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••••••"
+                      className="bg-muted/50 border-border/50 focus:border-primary"
+                      autoComplete="new-password"
+                    />
+                  </motion.div>
+                )}
+              </div>
+
+              <Button 
+                type="submit" 
+                className="w-full h-12 font-display tracking-wider"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <motion.div
+                    className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  />
+                ) : (
+                  mode === 'login' ? "AUTHENTICATE" : "REGISTER"
+                )}
+              </Button>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode(mode === 'login' ? 'signup' : 'login');
+                    setPassword('');
+                    setConfirmPassword('');
+                  }}
+                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
                 >
-                  <div className="text-center mb-6">
-                    <Mail className="w-8 h-8 text-primary mx-auto mb-2" />
-                    <h2 className="font-display text-xl text-foreground">EMAIL VERIFICATION</h2>
-                    <p className="text-muted-foreground text-sm mt-1">
-                      Enter the 6-digit code sent to your email
-                    </p>
-                    <p className="text-primary text-xs mt-2">{email}</p>
-                  </div>
-
-                  <div className="flex justify-center">
-                    <InputOTP 
-                      maxLength={6} 
-                      value={otp} 
-                      onChange={setOtp}
-                    >
-                      <InputOTPGroup>
-                        <InputOTPSlot index={0} className="w-12 h-14 text-xl font-display bg-muted/50 border-border/50" />
-                        <InputOTPSlot index={1} className="w-12 h-14 text-xl font-display bg-muted/50 border-border/50" />
-                        <InputOTPSlot index={2} className="w-12 h-14 text-xl font-display bg-muted/50 border-border/50" />
-                        <InputOTPSlot index={3} className="w-12 h-14 text-xl font-display bg-muted/50 border-border/50" />
-                        <InputOTPSlot index={4} className="w-12 h-14 text-xl font-display bg-muted/50 border-border/50" />
-                        <InputOTPSlot index={5} className="w-12 h-14 text-xl font-display bg-muted/50 border-border/50" />
-                      </InputOTPGroup>
-                    </InputOTP>
-                  </div>
-
-                  <Button 
-                    onClick={handleOtpVerify}
-                    className="w-full h-12 font-display tracking-wider"
-                    disabled={isLoading || otp.length !== 6}
-                  >
-                    {isLoading ? (
-                      <motion.div
-                        className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                      />
-                    ) : (
-                      "VERIFY & ACCESS"
-                    )}
-                  </Button>
-
-                  <div className="flex justify-between items-center text-sm">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStep('credentials');
-                        setOtp('');
-                      }}
-                      className="text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      ← Back
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resendOtp}
-                      disabled={isLoading}
-                      className="text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
-                    >
-                      Resend Code
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  {mode === 'login' 
+                    ? "Need access? Request credentials" 
+                    : "Already have access? Login"}
+                </button>
+              </div>
+            </motion.form>
           </div>
-
-          {/* Footer Info */}
-          <motion.div 
-            className="text-center mt-6 text-xs text-muted-foreground"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-          >
-            <p>Government Authorized System • Level 5 Security</p>
-            <p className="mt-1">Wildlife Conservation & Environmental Protection Division</p>
-          </motion.div>
         </motion.div>
+
+        {/* Security Notice */}
+        <motion.p 
+          className="text-muted-foreground/50 text-xs mt-8 text-center max-w-md"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.8 }}
+        >
+          🔒 Government Authorized System • Wildlife Conservation Division
+          <br />
+          Unauthorized access is strictly prohibited
+        </motion.p>
       </div>
+
+      {/* Custom Styles */}
+      <style>{`
+        @keyframes radar {
+          0% { transform: scale(0.5); opacity: 1; }
+          100% { transform: scale(2); opacity: 0; }
+        }
+        .animate-radar {
+          animation: radar 3s ease-out infinite;
+        }
+        .text-glow {
+          text-shadow: 0 0 20px hsl(var(--primary) / 0.5);
+        }
+        .gradient-card {
+          background: linear-gradient(145deg, 
+            hsl(var(--card) / 0.9) 0%, 
+            hsl(var(--card) / 0.7) 100%
+          );
+        }
+      `}</style>
     </div>
   );
 }
