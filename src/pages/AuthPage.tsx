@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Eye, Fingerprint, Radio, Satellite, Lock, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,25 @@ export default function AuthPage() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  // Check if already authenticated
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate('/');
+      }
+    };
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        navigate('/');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
   const handleCredentialSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -36,6 +55,16 @@ export default function AuthPage() {
       toast({
         title: "Invalid Email",
         description: "Please enter a valid email address",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Password validation
+    if (password.length < 6) {
+      toast({
+        title: "Invalid Password",
+        description: "Password must be at least 6 characters",
         variant: "destructive"
       });
       return;
@@ -84,6 +113,16 @@ export default function AuthPage() {
       return;
     }
 
+    // Validate OTP format (numbers only)
+    if (!/^\d{6}$/.test(otp)) {
+      toast({
+        title: "Invalid OTP",
+        description: "OTP must be 6 digits",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsLoading(true);
     
     try {
@@ -97,13 +136,85 @@ export default function AuthPage() {
       }
 
       if (data?.success) {
-        toast({
-          title: "Access Granted",
-          description: "Welcome to FAUNORA Command Center",
-        });
-        localStorage.setItem('faunora_authenticated', 'true');
-        localStorage.setItem('faunora_user_email', email);
-        navigate('/');
+        // If we got a token back, use signInWithOtp flow
+        // Otherwise, try to sign in with password or create account
+        
+        try {
+          // First try to sign in with password
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email,
+            password
+          });
+
+          if (signInError) {
+            // If sign in failed, try to sign up
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email,
+              password,
+              options: {
+                emailRedirectTo: `${window.location.origin}/`,
+                data: { verified_via: 'otp' }
+              }
+            });
+
+            if (signUpError) {
+              // If it's "User already registered", try password reset flow
+              if (signUpError.message?.includes('already registered')) {
+                // User exists but password is wrong - inform them
+                toast({
+                  title: "Account Exists",
+                  description: "An account with this email exists. Please use the correct password.",
+                  variant: "destructive"
+                });
+                setStep('credentials');
+                setOtp('');
+                return;
+              }
+              throw signUpError;
+            }
+
+            // Check if session was created
+            if (signUpData.session) {
+              toast({
+                title: "Access Granted",
+                description: "Welcome to FAUNORA Command Center",
+              });
+              navigate('/');
+              return;
+            }
+
+            // If no session but user created, sign them in
+            if (signUpData.user) {
+              const { error: finalSignInError } = await supabase.auth.signInWithPassword({
+                email,
+                password
+              });
+
+              if (!finalSignInError) {
+                toast({
+                  title: "Access Granted",
+                  description: "Welcome to FAUNORA Command Center",
+                });
+                navigate('/');
+                return;
+              }
+            }
+          } else if (signInData.session) {
+            toast({
+              title: "Access Granted",
+              description: "Welcome to FAUNORA Command Center",
+            });
+            navigate('/');
+            return;
+          }
+        } catch (authError: any) {
+          console.error('Auth error:', authError);
+          toast({
+            title: "Authentication Error",
+            description: authError.message || "Failed to authenticate",
+            variant: "destructive"
+          });
+        }
       } else {
         toast({
           title: "Verification Failed",
@@ -273,6 +384,7 @@ export default function AuthPage() {
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="operator@faunora.gov"
                         className="bg-muted/50 border-border/50 focus:border-primary"
+                        autoComplete="email"
                       />
                     </div>
                     
@@ -286,6 +398,7 @@ export default function AuthPage() {
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••••••"
                         className="bg-muted/50 border-border/50 focus:border-primary"
+                        autoComplete="current-password"
                       />
                     </div>
                   </div>
