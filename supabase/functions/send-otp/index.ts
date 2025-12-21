@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,6 +42,23 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid email format" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Create Supabase admin client
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+
     if (action === "send") {
       const newOtp = generateOtp();
       const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes expiry
@@ -46,7 +66,7 @@ const handler = async (req: Request): Promise<Response> => {
       // Store OTP
       otpStore.set(email, { otp: newOtp, expiresAt });
       
-      console.log(`Generated OTP for ${email}: ${newOtp}`);
+      console.log(`Generated OTP for ${email}`);
 
       // Send email via Resend API
       const emailResponse = await fetch("https://api.resend.com/emails", {
@@ -128,6 +148,14 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
 
+      // Validate OTP format
+      if (!/^\d{6}$/.test(otp)) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Invalid OTP format" }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
       const storedData = otpStore.get(email);
       
       if (!storedData) {
@@ -150,10 +178,86 @@ const handler = async (req: Request): Promise<Response> => {
       if (storedData.otp === otp) {
         otpStore.delete(email);
         console.log(`OTP verified successfully for email: ${email}`);
-        return new Response(
-          JSON.stringify({ success: true, message: "OTP verified successfully" }),
-          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-        );
+
+        try {
+          // Check if user exists
+          const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+          const existingUser = existingUsers?.users?.find(u => u.email === email);
+
+          let userId: string;
+
+          if (existingUser) {
+            userId = existingUser.id;
+            console.log(`Existing user found: ${userId}`);
+          } else {
+            // Create new user with email confirmed
+            const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+              email,
+              email_confirm: true,
+              user_metadata: { verified_via: 'otp' }
+            });
+
+            if (createError) {
+              console.error("Error creating user:", createError);
+              throw createError;
+            }
+
+            userId = newUser.user.id;
+            console.log(`New user created: ${userId}`);
+          }
+
+          // Generate magic link for session
+          const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'magiclink',
+            email,
+            options: {
+              redirectTo: `${req.headers.get('origin') || 'https://app.lovable.dev'}/`
+            }
+          });
+
+          if (linkError) {
+            console.error("Error generating link:", linkError);
+            throw linkError;
+          }
+
+          // Extract token from the link
+          const tokenHash = linkData.properties?.hashed_token;
+          
+          // Use the verification token to sign in the user
+          const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'magiclink',
+            email
+          });
+
+          if (sessionError) {
+            console.error("Error creating session:", sessionError);
+          }
+
+          // Return the magic link token for client to use
+          return new Response(
+            JSON.stringify({ 
+              success: true, 
+              message: "OTP verified successfully",
+              // Return the token parts for client-side verification
+              token: linkData.properties?.hashed_token,
+              type: 'magiclink',
+              email
+            }),
+            { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        } catch (authError: any) {
+          console.error("Auth error:", authError);
+          // Still return success for OTP verification but without session
+          return new Response(
+            JSON.stringify({ 
+              success: true, 
+              message: "OTP verified successfully",
+              email,
+              requiresManualAuth: true
+            }),
+            { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
       } else {
         console.log(`Invalid OTP for email: ${email}`);
         return new Response(
