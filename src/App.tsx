@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import DetectPage from "./pages/DetectPage";
+import IoTDashboardPage from "./pages/IoTDashboardPage";
 import AlertsPage from "./pages/AlertsPage";
 import MapPage from "./pages/MapPage";
 import DronePage from "./pages/DronePage";
@@ -46,6 +47,7 @@ const App = () => (
           <Route path="/digital-twin" element={<DigitalTwinPage />} />
           <Route path="/voice" element={<VoiceCommandPage />} />
           <Route path="/cyber-security" element={<CyberSecurityPage />} />
+          <Route path="/iot" element={<IoTDashboardPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
