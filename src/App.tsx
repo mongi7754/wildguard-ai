@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import DetectPage from "./pages/DetectPage";
 import IoTDashboardPage from "./pages/IoTDashboardPage";
+import FireDetectionPage from "./pages/FireDetectionPage";
+import LiveSatelliteMapPage from "./pages/LiveSatelliteMapPage";
 import AlertsPage from "./pages/AlertsPage";
 import MapPage from "./pages/MapPage";
 import DronePage from "./pages/DronePage";
@@ -48,6 +50,8 @@ const App = () => (
           <Route path="/voice" element={<VoiceCommandPage />} />
           <Route path="/cyber-security" element={<CyberSecurityPage />} />
           <Route path="/iot" element={<IoTDashboardPage />} />
+          <Route path="/fire-detection" element={<FireDetectionPage />} />
+          <Route path="/satellite-map" element={<LiveSatelliteMapPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
