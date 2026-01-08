@@ -17,7 +17,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { IoTSensor, ParkIoTStatus } from '@/types/iot';
-import kenyaSatelliteView from '@/assets/kenya-satellite-view.jpg';
+import satelliteAerialMap from '@/assets/satellite-aerial-map.png';
 
 interface KenyaInteractiveMapProps {
   parkStatus: ParkIoTStatus[];
@@ -101,7 +101,7 @@ export function KenyaInteractiveMap({ parkStatus, sensors, onParkSelect, selecte
         <div 
           className="absolute inset-0 bg-cover bg-center rounded-b-lg"
           style={{ 
-            backgroundImage: `url(${kenyaSatelliteView})`,
+            backgroundImage: `url(${satelliteAerialMap})`,
             filter: 'brightness(0.8) saturate(1.2)'
           }}
         />
