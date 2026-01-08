@@ -17,6 +17,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { IoTSensor, ParkIoTStatus } from '@/types/iot';
+import kenyaSatelliteView from '@/assets/kenya-satellite-view.jpg';
 
 interface KenyaInteractiveMapProps {
   parkStatus: ParkIoTStatus[];
@@ -95,18 +96,30 @@ export function KenyaInteractiveMap({ parkStatus, sensors, onParkSelect, selecte
         </p>
       </div>
 
-      <div className="relative h-[500px] bg-gradient-to-b from-background to-background/50">
+      <div className="relative h-[500px]">
+        {/* Satellite imagery background */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center rounded-b-lg"
+          style={{ 
+            backgroundImage: `url(${kenyaSatelliteView})`,
+            filter: 'brightness(0.8) saturate(1.2)'
+          }}
+        />
+        
+        {/* Overlay for better visibility */}
+        <div className="absolute inset-0 bg-gradient-to-b from-background/30 via-transparent to-background/50" />
+        
         {/* Kenya SVG Map */}
         <svg 
           viewBox="0 0 500 500" 
-          className="w-full h-full"
+          className="w-full h-full relative z-10"
           style={{ filter: 'drop-shadow(0 0 20px rgba(var(--primary), 0.1))' }}
         >
           {/* Kenya outline - simplified */}
           <path
             d="M150,80 L200,60 L280,50 L350,70 L420,100 L450,180 L440,280 L400,350 L350,420 L280,450 L200,420 L150,380 L120,320 L100,250 L110,180 L130,120 Z"
-            fill="hsl(var(--muted)/0.3)"
-            stroke="hsl(var(--primary)/0.5)"
+            fill="rgba(0,0,0,0.3)"
+            stroke="hsl(var(--primary))"
             strokeWidth="2"
           />
           
