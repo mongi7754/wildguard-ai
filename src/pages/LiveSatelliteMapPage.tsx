@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AnimalTracking, PoachingRiskZone, DroneFeed, FireRiskZone } from '@/types/fire';
-import kenyaSatelliteView from '@/assets/kenya-satellite-view.jpg';
+import satelliteAerialMap from '@/assets/satellite-aerial-map.png';
 
 // Kenya map bounds (approximate)
 const KENYA_BOUNDS = {
@@ -114,7 +114,7 @@ const LiveSatelliteMapPage = () => {
                 <div 
                   className="absolute inset-0 bg-cover bg-center"
                   style={{ 
-                    backgroundImage: `url(${kenyaSatelliteView})`,
+                    backgroundImage: `url(${satelliteAerialMap})`,
                     filter: 'brightness(0.85) saturate(1.1)'
                   }}
                 />
