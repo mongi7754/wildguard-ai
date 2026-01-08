@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AnimalTracking, PoachingRiskZone, DroneFeed, FireRiskZone } from '@/types/fire';
+import kenyaSatelliteView from '@/assets/kenya-satellite-view.jpg';
 
 // Kenya map bounds (approximate)
 const KENYA_BOUNDS = {
@@ -106,24 +107,43 @@ const LiveSatelliteMapPage = () => {
           <div className="flex-1 relative">
             <Card className="h-full bg-card/50 backdrop-blur border-border/50 overflow-hidden">
               <div 
-                className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900"
+                className="absolute inset-0"
                 style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }}
               >
-                {/* Grid overlay */}
-                <div className="absolute inset-0 opacity-10">
+                {/* Satellite imagery background */}
+                <div 
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{ 
+                    backgroundImage: `url(${kenyaSatelliteView})`,
+                    filter: 'brightness(0.85) saturate(1.1)'
+                  }}
+                />
+                
+                {/* Scan line effect for satellite feel */}
+                <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent animate-pulse" style={{ animationDuration: '4s' }} />
+                </div>
+                
+                {/* Coordinate grid overlay */}
+                <div className="absolute inset-0 opacity-20">
                   <svg width="100%" height="100%">
                     <defs>
-                      <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
-                        <path d="M 50 0 L 0 0 0 50" fill="none" stroke="currentColor" strokeWidth="0.5"/>
+                      <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+                        <path d="M 80 0 L 0 0 0 80" fill="none" stroke="hsl(var(--primary))" strokeWidth="0.5"/>
                       </pattern>
                     </defs>
                     <rect width="100%" height="100%" fill="url(#grid)" />
                   </svg>
                 </div>
 
-                {/* Kenya outline (simplified) */}
-                <div className="absolute inset-4 border border-cyan-500/20 rounded-lg">
-                  <div className="absolute top-2 left-2 text-xs text-cyan-400/60">KENYA</div>
+                {/* Kenya boundary overlay */}
+                <div className="absolute inset-4 border-2 border-cyan-400/40 rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.15)]">
+                  <div className="absolute top-2 left-2 px-2 py-1 bg-background/80 rounded text-xs text-cyan-400 font-mono">
+                    KENYA • SATELLITE VIEW • {zoom.toFixed(1)}x
+                  </div>
+                  <div className="absolute bottom-2 right-2 px-2 py-1 bg-background/80 rounded text-xs text-cyan-400/60 font-mono">
+                    LAT: -1.2921° | LNG: 36.8219°
+                  </div>
                 </div>
 
                 {/* Park markers */}
