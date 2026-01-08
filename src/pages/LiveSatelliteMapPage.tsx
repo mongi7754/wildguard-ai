@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,9 +10,10 @@ import { DroneFeedOverlay } from '@/components/map/DroneFeedOverlay';
 import { WeatherOverlay } from '@/components/map/WeatherOverlay';
 import { FireRiskOverlay } from '@/components/map/FireRiskOverlay';
 import { animalTracking, poachingRiskZones, droneFeedsData, weatherData, fireRiskZones } from '@/data/fireDetectionData';
+import { mockSensors } from '@/data/iotMockData';
 import { 
   Satellite, ZoomIn, ZoomOut, Maximize2, X, MapPin, 
-  Radio, Video, Shield, Flame, RefreshCw
+  Radio, Video, Shield, Flame, RefreshCw, Crosshair, Target
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AnimalTracking, PoachingRiskZone, DroneFeed, FireRiskZone } from '@/types/fire';
@@ -38,6 +39,15 @@ const parkLocations = [
   { id: 'nairobi', name: 'Nairobi NP', lat: -1.35, lng: 36.85 }
 ];
 
+// Zoom level thresholds for detail visibility
+const ZOOM_LEVELS = {
+  overview: 0.75,      // Show only park markers and heatmaps
+  regional: 1.0,       // Show drone feeds and fire zones
+  detailed: 1.25,      // Show individual animals
+  precise: 1.5,        // Show sensors and all details
+  maximum: 2.0         // Maximum detail with labels
+};
+
 type SelectedItem = 
   | { type: 'animal'; data: AnimalTracking }
   | { type: 'poaching'; data: PoachingRiskZone }
@@ -50,6 +60,10 @@ const LiveSatelliteMapPage = () => {
   const [zoom, setZoom] = useState(1);
   const [selectedItem, setSelectedItem] = useState<SelectedItem>(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [gpsCoords, setGpsCoords] = useState({ lat: -1.2921, lng: 36.8219 });
+  const [showCrosshair, setShowCrosshair] = useState(true);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
 
   const toggleLayer = (layerId: string) => {
     setLayers(prev => prev.map(layer => 
@@ -69,6 +83,40 @@ const LiveSatelliteMapPage = () => {
     const y = ((KENYA_BOUNDS.maxLat - lat) / (KENYA_BOUNDS.maxLat - KENYA_BOUNDS.minLat)) * 100;
     return { x: Math.max(5, Math.min(95, x)), y: Math.max(5, Math.min(95, y)) };
   };
+
+  // Convert pixel position to GPS coordinates
+  const pixelToGps = (pixelX: number, pixelY: number, containerRect: DOMRect) => {
+    const relX = (pixelX - containerRect.left) / containerRect.width;
+    const relY = (pixelY - containerRect.top) / containerRect.height;
+    
+    const lng = KENYA_BOUNDS.minLng + (relX * (KENYA_BOUNDS.maxLng - KENYA_BOUNDS.minLng));
+    const lat = KENYA_BOUNDS.maxLat - (relY * (KENYA_BOUNDS.maxLat - KENYA_BOUNDS.minLat));
+    
+    return { lat, lng };
+  };
+
+  // Handle mouse movement for GPS tracking
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!mapContainerRef.current) return;
+    const rect = mapContainerRef.current.getBoundingClientRect();
+    const coords = pixelToGps(e.clientX, e.clientY, rect);
+    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    setGpsCoords(coords);
+  };
+
+  // Get zoom level label
+  const getZoomLabel = () => {
+    if (zoom >= ZOOM_LEVELS.maximum) return 'MAXIMUM';
+    if (zoom >= ZOOM_LEVELS.precise) return 'PRECISE';
+    if (zoom >= ZOOM_LEVELS.detailed) return 'DETAILED';
+    if (zoom >= ZOOM_LEVELS.regional) return 'REGIONAL';
+    return 'OVERVIEW';
+  };
+
+  // Determine which elements to show based on zoom
+  const showDetailedAnimals = zoom >= ZOOM_LEVELS.detailed;
+  const showSensors = zoom >= ZOOM_LEVELS.precise;
+  const showLabels = zoom >= ZOOM_LEVELS.maximum;
 
   return (
     <AppLayout>
@@ -92,6 +140,9 @@ const LiveSatelliteMapPage = () => {
               <span className="w-2 h-2 rounded-full bg-green-400 mr-2 animate-pulse" />
               LIVE
             </Badge>
+            <Badge variant="outline" className="font-mono text-xs">
+              {getZoomLabel()}
+            </Badge>
             <span className="text-xs text-muted-foreground">
               Updated: {lastUpdate.toLocaleTimeString()}
             </span>
@@ -107,7 +158,9 @@ const LiveSatelliteMapPage = () => {
           <div className="flex-1 relative">
             <Card className="h-full bg-card/50 backdrop-blur border-border/50 overflow-hidden">
               <div 
-                className="absolute inset-0"
+                ref={mapContainerRef}
+                className="absolute inset-0 cursor-crosshair"
+                onMouseMove={handleMouseMove}
                 style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }}
               >
                 {/* Satellite imagery background */}
@@ -124,41 +177,59 @@ const LiveSatelliteMapPage = () => {
                   <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent animate-pulse" style={{ animationDuration: '4s' }} />
                 </div>
                 
-                {/* Coordinate grid overlay */}
-                <div className="absolute inset-0 opacity-20">
+                {/* Coordinate grid overlay - more detailed at higher zoom */}
+                <div className="absolute inset-0" style={{ opacity: 0.15 + (zoom * 0.1) }}>
                   <svg width="100%" height="100%">
                     <defs>
-                      <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
-                        <path d="M 80 0 L 0 0 0 80" fill="none" stroke="hsl(var(--primary))" strokeWidth="0.5"/>
+                      <pattern id="grid-main" width={80 / zoom} height={80 / zoom} patternUnits="userSpaceOnUse">
+                        <path d={`M ${80/zoom} 0 L 0 0 0 ${80/zoom}`} fill="none" stroke="hsl(var(--primary))" strokeWidth="0.5"/>
                       </pattern>
+                      {zoom >= ZOOM_LEVELS.detailed && (
+                        <pattern id="grid-fine" width={20 / zoom} height={20 / zoom} patternUnits="userSpaceOnUse">
+                          <path d={`M ${20/zoom} 0 L 0 0 0 ${20/zoom}`} fill="none" stroke="hsl(var(--primary))" strokeWidth="0.2"/>
+                        </pattern>
+                      )}
                     </defs>
-                    <rect width="100%" height="100%" fill="url(#grid)" />
+                    <rect width="100%" height="100%" fill="url(#grid-main)" />
+                    {zoom >= ZOOM_LEVELS.detailed && (
+                      <rect width="100%" height="100%" fill="url(#grid-fine)" />
+                    )}
                   </svg>
                 </div>
 
                 {/* Kenya boundary overlay */}
                 <div className="absolute inset-4 border-2 border-cyan-400/40 rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.15)]">
-                  <div className="absolute top-2 left-2 px-2 py-1 bg-background/80 rounded text-xs text-cyan-400 font-mono">
-                    KENYA • SATELLITE VIEW • {zoom.toFixed(1)}x
-                  </div>
-                  <div className="absolute bottom-2 right-2 px-2 py-1 bg-background/80 rounded text-xs text-cyan-400/60 font-mono">
-                    LAT: -1.2921° | LNG: 36.8219°
+                  <div className="absolute top-2 left-2 px-2 py-1 bg-background/90 rounded text-xs text-cyan-400 font-mono flex items-center gap-2">
+                    <Satellite className="h-3 w-3" />
+                    KENYA • {getZoomLabel()} • {zoom.toFixed(2)}x
                   </div>
                 </div>
 
-                {/* Park markers */}
+                {/* Park markers - always visible */}
                 {parkLocations.map((park) => {
                   const pos = getPosition(park.lat, park.lng);
                   return (
                     <div
                       key={park.id}
-                      className="absolute"
-                      style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+                      className="absolute transition-all duration-200"
+                      style={{ 
+                        left: `${pos.x}%`, 
+                        top: `${pos.y}%`,
+                        transform: `scale(${1/zoom})`
+                      }}
                     >
                       <div className="relative group">
-                        <div className="w-3 h-3 rounded-full bg-emerald-500/40 border border-emerald-400/60" />
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 hidden group-hover:block">
-                          <span className="text-[10px] text-emerald-400 whitespace-nowrap bg-background/80 px-1 rounded">
+                        <div className={`rounded-full bg-emerald-500/40 border-2 border-emerald-400/80 transition-all ${
+                          zoom >= ZOOM_LEVELS.regional ? 'w-4 h-4' : 'w-3 h-3'
+                        }`}>
+                          {zoom >= ZOOM_LEVELS.detailed && (
+                            <div className="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping" />
+                          )}
+                        </div>
+                        <div className={`absolute left-5 top-1/2 -translate-y-1/2 transition-opacity ${
+                          zoom >= ZOOM_LEVELS.regional ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        }`}>
+                          <span className="text-[10px] text-emerald-400 whitespace-nowrap bg-background/90 px-2 py-0.5 rounded font-medium">
                             {park.name}
                           </span>
                         </div>
@@ -184,7 +255,8 @@ const LiveSatelliteMapPage = () => {
                   />
                 )}
 
-                {isLayerEnabled('animals') && (
+                {/* Animals - visibility based on zoom */}
+                {isLayerEnabled('animals') && showDetailedAnimals && (
                   <AnimalTrackingLayer
                     animals={animalTracking}
                     mapBounds={KENYA_BOUNDS}
@@ -192,7 +264,8 @@ const LiveSatelliteMapPage = () => {
                   />
                 )}
 
-                {isLayerEnabled('drones') && (
+                {/* Drones - visible at regional zoom and above */}
+                {isLayerEnabled('drones') && zoom >= ZOOM_LEVELS.regional && (
                   <DroneFeedOverlay
                     drones={droneFeedsData}
                     mapBounds={KENYA_BOUNDS}
@@ -206,6 +279,91 @@ const LiveSatelliteMapPage = () => {
                     mapBounds={KENYA_BOUNDS}
                   />
                 )}
+
+                {/* IoT Sensors - visible at precise zoom */}
+                {isLayerEnabled('sensors') && showSensors && (
+                  <div className="absolute inset-0 pointer-events-none">
+                    {mockSensors.slice(0, 20).map((sensor, idx) => {
+                      // Distribute sensors across parks
+                      const park = parkLocations[idx % parkLocations.length];
+                      const offsetLat = (Math.random() - 0.5) * 0.5;
+                      const offsetLng = (Math.random() - 0.5) * 0.5;
+                      const pos = getPosition(park.lat + offsetLat, park.lng + offsetLng);
+                      
+                      return (
+                        <motion.div
+                          key={sensor.id}
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: 1 / zoom, opacity: 1 }}
+                          className="absolute pointer-events-auto cursor-pointer"
+                          style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+                        >
+                          <div className={`w-2 h-2 rounded-full ${
+                            sensor.status === 'online' ? 'bg-cyan-400' :
+                            sensor.status === 'warning' ? 'bg-yellow-400' : 'bg-red-400'
+                          }`}>
+                            <div className="absolute inset-0 rounded-full bg-cyan-400/30 animate-ping" style={{ animationDuration: '2s' }} />
+                          </div>
+                          {showLabels && (
+                            <span className="absolute left-3 top-0 text-[8px] text-cyan-300 whitespace-nowrap bg-background/80 px-1 rounded">
+                              {sensor.name}
+                            </span>
+                          )}
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Crosshair overlay - fixed position */}
+              {showCrosshair && (
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  <div className="relative">
+                    {/* Horizontal line */}
+                    <div className="absolute w-16 h-px bg-cyan-400/60 -translate-x-1/2 left-1/2" />
+                    {/* Vertical line */}
+                    <div className="absolute h-16 w-px bg-cyan-400/60 -translate-y-1/2 top-1/2" />
+                    {/* Center circle */}
+                    <div className="w-6 h-6 rounded-full border-2 border-cyan-400/80 flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                    </div>
+                    {/* Corner brackets */}
+                    <div className="absolute -top-4 -left-4 w-3 h-3 border-t-2 border-l-2 border-cyan-400/60" />
+                    <div className="absolute -top-4 -right-4 w-3 h-3 border-t-2 border-r-2 border-cyan-400/60" />
+                    <div className="absolute -bottom-4 -left-4 w-3 h-3 border-b-2 border-l-2 border-cyan-400/60" />
+                    <div className="absolute -bottom-4 -right-4 w-3 h-3 border-b-2 border-r-2 border-cyan-400/60" />
+                  </div>
+                </div>
+              )}
+
+              {/* Real-time GPS coordinate display */}
+              <div className="absolute bottom-4 right-4 bg-background/95 backdrop-blur rounded-lg border border-cyan-500/30 p-3 font-mono text-xs space-y-1">
+                <div className="flex items-center gap-2 text-cyan-400 font-semibold mb-2">
+                  <Target className="h-4 w-4" />
+                  GPS TRACKING
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  <span className="text-muted-foreground">LAT:</span>
+                  <span className="text-cyan-300">{gpsCoords.lat.toFixed(6)}°</span>
+                  <span className="text-muted-foreground">LNG:</span>
+                  <span className="text-cyan-300">{gpsCoords.lng.toFixed(6)}°</span>
+                  <span className="text-muted-foreground">ZOOM:</span>
+                  <span className="text-green-400">{zoom.toFixed(2)}x</span>
+                  <span className="text-muted-foreground">MODE:</span>
+                  <span className="text-amber-400">{getZoomLabel()}</span>
+                </div>
+                <div className="pt-2 border-t border-border/50 mt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full h-7 text-[10px]"
+                    onClick={() => setShowCrosshair(!showCrosshair)}
+                  >
+                    <Crosshair className="h-3 w-3 mr-1" />
+                    {showCrosshair ? 'Hide' : 'Show'} Crosshair
+                  </Button>
+                </div>
               </div>
 
               {/* Zoom controls */}
@@ -214,7 +372,7 @@ const LiveSatelliteMapPage = () => {
                   variant="outline" 
                   size="icon" 
                   className="h-8 w-8 bg-background/80"
-                  onClick={() => setZoom(Math.min(2, zoom + 0.25))}
+                  onClick={() => setZoom(Math.min(ZOOM_LEVELS.maximum, zoom + 0.25))}
                 >
                   <ZoomIn className="h-4 w-4" />
                 </Button>
@@ -234,13 +392,26 @@ const LiveSatelliteMapPage = () => {
                 >
                   <Maximize2 className="h-4 w-4" />
                 </Button>
+                {/* Zoom level indicator */}
+                <div className="bg-background/80 rounded-lg px-2 py-3 flex flex-col items-center gap-1">
+                  {Object.entries(ZOOM_LEVELS).map(([key, value]) => (
+                    <div
+                      key={key}
+                      className={`w-2 h-2 rounded-full transition-colors ${
+                        zoom >= value ? 'bg-cyan-400' : 'bg-muted'
+                      }`}
+                      title={key}
+                    />
+                  ))}
+                </div>
               </div>
 
               {/* Stats overlay */}
-              <div className="absolute left-4 bottom-4 flex gap-2">
+              <div className="absolute left-4 bottom-4 flex gap-2 flex-wrap max-w-md">
                 <div className="bg-background/80 backdrop-blur rounded-lg px-3 py-2 flex items-center gap-2">
                   <Radio className="h-4 w-4 text-green-400" />
                   <span className="text-xs">{animalTracking.length} Animals</span>
+                  {!showDetailedAnimals && <Badge variant="outline" className="text-[8px] h-4">Zoom to view</Badge>}
                 </div>
                 <div className="bg-background/80 backdrop-blur rounded-lg px-3 py-2 flex items-center gap-2">
                   <Video className="h-4 w-4 text-purple-400" />
@@ -254,6 +425,12 @@ const LiveSatelliteMapPage = () => {
                   <Flame className="h-4 w-4 text-orange-400" />
                   <span className="text-xs">{fireRiskZones.filter(z => z.riskLevel === 'high' || z.riskLevel === 'extreme').length} Fire Alerts</span>
                 </div>
+                {showSensors && (
+                  <div className="bg-background/80 backdrop-blur rounded-lg px-3 py-2 flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-cyan-400" />
+                    <span className="text-xs">{mockSensors.length} Sensors</span>
+                  </div>
+                )}
               </div>
             </Card>
           </div>
@@ -261,6 +438,29 @@ const LiveSatelliteMapPage = () => {
           {/* Right sidebar */}
           <div className="w-72 flex flex-col gap-4">
             <LiveMapLayers layers={layers} onToggle={toggleLayer} />
+
+            {/* Zoom Level Guide */}
+            <Card className="bg-card/90 backdrop-blur border-border/50">
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ZoomIn className="h-4 w-4" />
+                  Zoom Levels
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 space-y-2 text-xs">
+                {Object.entries(ZOOM_LEVELS).map(([key, value]) => (
+                  <div 
+                    key={key}
+                    className={`flex items-center justify-between p-2 rounded ${
+                      zoom >= value ? 'bg-cyan-500/20 text-cyan-400' : 'bg-muted/20 text-muted-foreground'
+                    }`}
+                  >
+                    <span className="capitalize">{key}</span>
+                    <span className="font-mono">{value.toFixed(2)}x</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
 
             {/* Selected item details */}
             <AnimatePresence>
@@ -296,6 +496,9 @@ const LiveSatelliteMapPage = () => {
                           <p><strong>Status:</strong> {selectedItem.data.healthStatus}</p>
                           <p><strong>Speed:</strong> {selectedItem.data.speed} km/h</p>
                           <p><strong>Battery:</strong> {selectedItem.data.batteryLevel}%</p>
+                          <p className="font-mono text-xs text-cyan-400 mt-2">
+                            GPS: {selectedItem.data.location.lat.toFixed(4)}°, {selectedItem.data.location.lng.toFixed(4)}°
+                          </p>
                         </>
                       )}
                       {selectedItem.type === 'drone' && (
@@ -305,6 +508,9 @@ const LiveSatelliteMapPage = () => {
                           <p><strong>Mission:</strong> {selectedItem.data.mission}</p>
                           <p><strong>Altitude:</strong> {selectedItem.data.altitude}m</p>
                           <p><strong>Battery:</strong> {selectedItem.data.battery}%</p>
+                          <p className="font-mono text-xs text-cyan-400 mt-2">
+                            GPS: {selectedItem.data.location.lat.toFixed(4)}°, {selectedItem.data.location.lng.toFixed(4)}°
+                          </p>
                         </>
                       )}
                       {selectedItem.type === 'poaching' && (
