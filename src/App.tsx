@@ -21,6 +21,7 @@ import AIAssistantPage from "./pages/AIAssistantPage";
 import ThreatPredictionPage from "./pages/ThreatPredictionPage";
 import DigitalTwinPage from "./pages/DigitalTwinPage";
 import VoiceCommandPage from "./pages/VoiceCommandPage";
+import AIVoiceOfParksPage from "./pages/AIVoiceOfParksPage";
 import CyberSecurityPage from "./pages/CyberSecurityPage";
 import NotFound from "./pages/NotFound";
 
@@ -48,6 +49,7 @@ const App = () => (
           <Route path="/predictions" element={<ThreatPredictionPage />} />
           <Route path="/digital-twin" element={<DigitalTwinPage />} />
           <Route path="/voice" element={<VoiceCommandPage />} />
+          <Route path="/ai-voice" element={<AIVoiceOfParksPage />} />
           <Route path="/cyber-security" element={<CyberSecurityPage />} />
           <Route path="/iot" element={<IoTDashboardPage />} />
           <Route path="/fire-detection" element={<FireDetectionPage />} />
