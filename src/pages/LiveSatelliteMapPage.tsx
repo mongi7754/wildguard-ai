@@ -9,6 +9,8 @@ import { LockedPointMarker } from '@/components/map/LockedPointMarker';
 import { SatelliteConnectionPanel } from '@/components/map/SatelliteConnectionPanel';
 import { WildlifeCorridorLayer } from '@/components/map/WildlifeCorridorLayer';
 import { RealParkMarker } from '@/components/map/RealParkMarker';
+import { WeatherOverlayLayer } from '@/components/map/WeatherOverlayLayer';
+import { WeatherStatsPanel } from '@/components/map/WeatherStatsPanel';
 import { 
   realKenyaParks, 
   wildlifeCorridors, 
@@ -20,12 +22,13 @@ import {
   TrackedAnimal,
   ParkSensor
 } from '@/data/kenyaParksRealData';
+import { generateParkWeatherData, ParkWeatherData } from '@/data/weatherData';
 import { HistoricalThreat } from '@/data/historicalThreats';
 import { 
   Satellite, ZoomIn, ZoomOut, Maximize2, X, MapPin, 
   Radio, Shield, Flame, RefreshCw, Crosshair, Target,
   Lock, Move, Navigation, AlertTriangle, Clock, Eye, Layers,
-  Globe, Wifi, Activity
+  Globe, Wifi, Activity, Cloud
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import satelliteAerialMap from '@/assets/satellite-aerial-map.png';
@@ -77,12 +80,22 @@ const LiveSatelliteMapPage = () => {
   // Show corridors
   const [showCorridors, setShowCorridors] = useState(true);
   
+  // Weather data
+  const [showWeather, setShowWeather] = useState(true);
+  const [weatherData, setWeatherData] = useState<ParkWeatherData[]>(() => generateParkWeatherData());
+  
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
 
   // Generate tracked data
   const trackedAnimals = useMemo(() => generateTrackedAnimals(), []);
   const parkSensors = useMemo(() => generateParkSensors(), []);
+  
+  // Refresh weather data
+  const refreshWeather = useCallback(() => {
+    setWeatherData(generateParkWeatherData());
+    setLastUpdate(new Date());
+  }, []);
 
   const toggleLayer = (layerId: string) => {
     setLayers(prev => prev.map(layer => 
@@ -491,6 +504,16 @@ const LiveSatelliteMapPage = () => {
                     })}
                   </AnimatePresence>
 
+                  {/* Weather Overlay */}
+                  {showWeather && (
+                    <WeatherOverlayLayer
+                      weatherData={weatherData}
+                      mapBounds={KENYA_BOUNDS}
+                      zoom={zoom}
+                      showDetails={true}
+                    />
+                  )}
+
                   {/* Locked Points */}
                   <AnimatePresence>
                     {lockedPoints.map((point, index) => {
@@ -669,6 +692,35 @@ const LiveSatelliteMapPage = () => {
 
           {/* Right sidebar */}
           <div className="w-72 flex flex-col gap-4 overflow-y-auto">
+            {/* Weather & Fire Risk Panel */}
+            {showWeather && (
+              <WeatherStatsPanel 
+                weatherData={weatherData}
+                onRefresh={refreshWeather}
+                lastUpdate={lastUpdate}
+              />
+            )}
+            
+            {/* Weather Toggle */}
+            <Card className="bg-card/90 backdrop-blur border-border/50">
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Cloud className="h-4 w-4 text-cyan-400" />
+                    Weather Overlay
+                  </span>
+                  <Button
+                    variant={showWeather ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-6 text-[10px]"
+                    onClick={() => setShowWeather(!showWeather)}
+                  >
+                    {showWeather ? 'Hide' : 'Show'}
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+            </Card>
+            
             {/* Satellite Connections */}
             <SatelliteConnectionPanel connections={satelliteConnections} />
 

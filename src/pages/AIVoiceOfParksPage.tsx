@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,10 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { kenyanParks, getParkStats } from '@/data/parksData';
 import { historicalThreats, getThreatStats } from '@/data/historicalThreats';
+import { generateParkWeatherData, getNetworkWeatherStats } from '@/data/weatherData';
 import { 
   Mic, MicOff, Volume2, VolumeX, Send, Bot, User, 
   FileText, AlertTriangle, TrendingUp, Shield, Flame,
-  Clock, MapPin, RefreshCw, Download, Sparkles
+  Clock, MapPin, RefreshCw, Download, Sparkles, Play,
+  Pause, Radio, Thermometer, Droplets
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
@@ -50,6 +52,9 @@ const AIVoiceOfParksPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [reports, setReports] = useState<ParkReport[]>([]);
   const [activeTab, setActiveTab] = useState('chat');
+  const [isPlayingVoice, setIsPlayingVoice] = useState(false);
+  const [currentUtterance, setCurrentUtterance] = useState<SpeechSynthesisUtterance | null>(null);
+  const [weatherData, setWeatherData] = useState(() => generateParkWeatherData());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -76,9 +81,10 @@ const AIVoiceOfParksPage = () => {
     setMessages([greeting]);
   }, [selectedPark]);
 
-  const generateParkContext = () => {
+  const generateParkContext = useCallback(() => {
     const stats = getParkStats();
     const threatStats = getThreatStats();
+    const weatherStats = getNetworkWeatherStats(weatherData);
     const park = selectedPark === 'all' 
       ? null 
       : kenyanParks.find(p => p.id === selectedPark);
@@ -92,6 +98,14 @@ CURRENT STATUS:
 - Operational Drones: ${stats.totalDrones}
 - Recent Alerts: ${stats.totalAlerts}
 
+WEATHER & FIRE RISK:
+- Average Temperature: ${weatherStats.avgTemp}°C
+- Average Humidity: ${weatherStats.avgHumidity}%
+- Network Fire Risk Score: ${weatherStats.avgFireRisk}%
+- Parks at Extreme Fire Risk: ${weatherStats.extremeFireCount} (${weatherStats.extremeFireParks.join(', ') || 'None'})
+- Parks at High Fire Risk: ${weatherStats.highFireCount} (${weatherStats.highFireParks.join(', ') || 'None'})
+- Active Weather Alerts: ${weatherStats.totalAlerts}
+
 THREAT ANALYSIS (Last 7 Days):
 - Total Incidents: ${threatStats.total}
 - Resolved: ${threatStats.resolved}
@@ -104,6 +118,7 @@ THREAT ANALYSIS (Last 7 Days):
 `;
 
     if (park) {
+      const parkWeather = weatherData.find(w => w.parkId === park.id.replace('masai_mara', 'masai-mara').replace(/_/g, '-'));
       context += `
 SPECIFIC PARK DATA - ${park.name}:
 - Location: ${park.region}, ${park.country}
@@ -115,11 +130,99 @@ SPECIFIC PARK DATA - ${park.name}:
 - Ranger Teams: ${park.rangerTeams}
 - Active Drones: ${park.activeDrones}
 - Recent Alerts: ${park.recentAlerts}
-`;
+${parkWeather ? `
+CURRENT WEATHER:
+- Temperature: ${parkWeather.temperature}°C
+- Humidity: ${parkWeather.humidity}%
+- Wind: ${parkWeather.windSpeed} km/h ${parkWeather.windDirection}
+- Conditions: ${parkWeather.conditions}
+- Fire Risk: ${parkWeather.fireRisk.toUpperCase()} (${parkWeather.fireRiskScore}%)
+` : ''}`;
     }
 
     return context;
-  };
+  }, [selectedPark, weatherData]);
+
+  // Voice playback function
+  const speakText = useCallback((text: string) => {
+    if (!('speechSynthesis' in window)) {
+      toast.error('Speech synthesis not supported in this browser');
+      return;
+    }
+
+    // Cancel any ongoing speech
+    speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    // Try to find a good voice
+    const voices = speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) 
+      || voices.find(v => v.lang.startsWith('en'));
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+
+    utterance.onstart = () => setIsPlayingVoice(true);
+    utterance.onend = () => setIsPlayingVoice(false);
+    utterance.onerror = () => setIsPlayingVoice(false);
+
+    setCurrentUtterance(utterance);
+    speechSynthesis.speak(utterance);
+  }, []);
+
+  const stopSpeaking = useCallback(() => {
+    speechSynthesis.cancel();
+    setIsPlayingVoice(false);
+  }, []);
+
+  // Auto-brief function
+  const generateVoiceBriefing = useCallback(async () => {
+    setIsLoading(true);
+    const park = selectedPark === 'all' ? null : kenyanParks.find(p => p.id === selectedPark);
+    
+    try {
+      const context = generateParkContext();
+      
+      const { data, error } = await supabase.functions.invoke('ai-voice-of-parks', {
+        body: {
+          message: `Generate a concise 60-second voice briefing for senior government leadership. Start with "I am ${park ? park.name : 'the Kenya National Parks Network'}." Include: current status, critical threats, weather/fire risk, and top 3 recommendations. Keep it natural for speech synthesis.`,
+          context: context,
+          parkId: selectedPark,
+          reportType: 'voice_briefing'
+        }
+      });
+
+      if (error) throw error;
+
+      const briefingText = data.response;
+      
+      // Add to messages
+      const briefingMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: briefingText,
+        timestamp: new Date(),
+        park: selectedPark
+      };
+      setMessages(prev => [...prev, briefingMessage]);
+
+      // Speak the briefing if voice is enabled
+      if (isSpeaking) {
+        speakText(briefingText);
+      }
+
+      toast.success('Voice briefing generated');
+    } catch (error) {
+      console.error('Voice briefing error:', error);
+      toast.error('Failed to generate voice briefing');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedPark, generateParkContext, isSpeaking, speakText]);
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
@@ -138,32 +241,11 @@ SPECIFIC PARK DATA - ${park.name}:
     try {
       const context = generateParkContext();
       
-      const { data, error } = await supabase.functions.invoke('ai-command-assistant', {
+      const { data, error } = await supabase.functions.invoke('ai-voice-of-parks', {
         body: {
           message: inputMessage.trim(),
           context: context,
-          systemPrompt: `You are an Autonomous Government AI Agent, officially designated as the "AI Voice of the Park" for Kenyan national parks.
-
-Your purpose is to:
-- Generate accurate, data-driven reports
-- Brief government leaders clearly and concisely
-- Answer questions about the park in natural language
-- Provide early warnings, insights, and recommendations
-
-BEHAVIOR:
-- Speak in clear, professional, calm government language
-- Be fact-based and neutral
-- Avoid speculation; quantify uncertainty
-- Use summaries first, then details if requested
-- Support statements with metrics, trends, and confidence levels
-
-CAPABILITIES:
-1. Automated Report Generation (Daily, Weekly, Emergency)
-2. Leadership Briefing Mode (concise, actionable)
-3. Question & Answer Mode (evidence-based)
-4. Early Warning & Alert Voice (proactive)
-
-Use the provided context data to give accurate, current information about the parks.`
+          parkId: selectedPark
         }
       });
 
@@ -180,8 +262,7 @@ Use the provided context data to give accurate, current information about the pa
       setMessages(prev => [...prev, assistantMessage]);
 
       if (isSpeaking && 'speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(data.response);
-        speechSynthesis.speak(utterance);
+        speakText(data.response);
       }
     } catch (error) {
       console.error('AI Voice error:', error);
@@ -212,13 +293,12 @@ Use the provided context data to give accurate, current information about the pa
         briefing: 'Generate a 60-second Leadership Briefing with only critical issues and recommendations.'
       };
 
-      const { data, error } = await supabase.functions.invoke('ai-command-assistant', {
+      const { data, error } = await supabase.functions.invoke('ai-voice-of-parks', {
         body: {
           message: reportPrompts[type],
           context: context,
-          systemPrompt: `You are generating official government reports for Kenya Wildlife Service and national leadership.
-Format the report professionally with clear sections, metrics, and actionable recommendations.
-Include confidence levels and data sources where applicable.`
+          parkId: selectedPark,
+          reportType: type
         }
       });
 
@@ -322,9 +402,23 @@ Include confidence levels and data sources where applicable.`
             </Select>
 
             <Button
+              variant="default"
+              size="sm"
+              onClick={generateVoiceBriefing}
+              disabled={isLoading}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {isPlayingVoice ? <Pause className="h-4 w-4 mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+              Voice Briefing
+            </Button>
+
+            <Button
               variant={isSpeaking ? "secondary" : "outline"}
               size="icon"
-              onClick={() => setIsSpeaking(!isSpeaking)}
+              onClick={() => {
+                if (isPlayingVoice) stopSpeaking();
+                setIsSpeaking(!isSpeaking);
+              }}
               title={isSpeaking ? "Mute voice" : "Enable voice"}
             >
               {isSpeaking ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
