@@ -1,49 +1,44 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { LiveMapLayers, defaultMapLayers } from '@/components/map/LiveMapLayers';
-import { AnimalTrackingLayer } from '@/components/map/AnimalTrackingLayer';
-import { PoachingHeatmap } from '@/components/map/PoachingHeatmap';
-import { DroneFeedOverlay } from '@/components/map/DroneFeedOverlay';
-import { WeatherOverlay } from '@/components/map/WeatherOverlay';
-import { FireRiskOverlay } from '@/components/map/FireRiskOverlay';
 import { ThreatPlayback } from '@/components/map/ThreatPlayback';
 import { LockedPointMarker } from '@/components/map/LockedPointMarker';
-import { animalTracking, poachingRiskZones, droneFeedsData, weatherData, fireRiskZones } from '@/data/fireDetectionData';
-import { mockSensors } from '@/data/iotMockData';
+import { SatelliteConnectionPanel } from '@/components/map/SatelliteConnectionPanel';
+import { WildlifeCorridorLayer } from '@/components/map/WildlifeCorridorLayer';
+import { RealParkMarker } from '@/components/map/RealParkMarker';
+import { 
+  realKenyaParks, 
+  wildlifeCorridors, 
+  satelliteConnections,
+  generateTrackedAnimals,
+  generateParkSensors,
+  KENYA_REAL_BOUNDS,
+  RealPark,
+  TrackedAnimal,
+  ParkSensor
+} from '@/data/kenyaParksRealData';
 import { HistoricalThreat } from '@/data/historicalThreats';
 import { 
   Satellite, ZoomIn, ZoomOut, Maximize2, X, MapPin, 
-  Radio, Video, Shield, Flame, RefreshCw, Crosshair, Target,
-  Lock, Move, Navigation, AlertTriangle, Clock
+  Radio, Shield, Flame, RefreshCw, Crosshair, Target,
+  Lock, Move, Navigation, AlertTriangle, Clock, Eye, Layers,
+  Globe, Wifi, Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AnimalTracking, PoachingRiskZone, DroneFeed, FireRiskZone } from '@/types/fire';
 import satelliteAerialMap from '@/assets/satellite-aerial-map.png';
 
-// Kenya map bounds (approximate)
+// Kenya map bounds for accurate positioning
 const KENYA_BOUNDS = {
-  minLat: -4.5,
-  maxLat: 4.5,
-  minLng: 34,
-  maxLng: 42
+  minLat: KENYA_REAL_BOUNDS.south,
+  maxLat: KENYA_REAL_BOUNDS.north,
+  minLng: KENYA_REAL_BOUNDS.west,
+  maxLng: KENYA_REAL_BOUNDS.east
 };
 
-// Park locations for the map
-const parkLocations = [
-  { id: 'masai-mara', name: 'Masai Mara', lat: -1.4, lng: 35.2 },
-  { id: 'amboseli', name: 'Amboseli', lat: -2.65, lng: 37.25 },
-  { id: 'tsavo-east', name: 'Tsavo East', lat: -2.9, lng: 38.5 },
-  { id: 'tsavo-west', name: 'Tsavo West', lat: -2.85, lng: 38.0 },
-  { id: 'lake-nakuru', name: 'Lake Nakuru', lat: -0.35, lng: 36.1 },
-  { id: 'samburu', name: 'Samburu', lat: 0.55, lng: 37.5 },
-  { id: 'meru', name: 'Meru', lat: 0.15, lng: 38.2 },
-  { id: 'nairobi', name: 'Nairobi NP', lat: -1.35, lng: 36.85 }
-];
-
-// Zoom level thresholds for detail visibility
+// Zoom level thresholds
 const ZOOM_LEVELS = {
   overview: 0.75,
   regional: 1.0,
@@ -58,20 +53,13 @@ interface LockedPoint {
   timestamp: Date;
 }
 
-type SelectedItem = 
-  | { type: 'animal'; data: AnimalTracking }
-  | { type: 'poaching'; data: PoachingRiskZone }
-  | { type: 'drone'; data: DroneFeed }
-  | { type: 'fire'; data: FireRiskZone }
-  | null;
-
 const LiveSatelliteMapPage = () => {
   const [layers, setLayers] = useState(defaultMapLayers);
   const [zoom, setZoom] = useState(1);
-  const [selectedItem, setSelectedItem] = useState<SelectedItem>(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());
-  const [gpsCoords, setGpsCoords] = useState({ lat: -1.2921, lng: 36.8219 });
+  const [gpsCoords, setGpsCoords] = useState({ lat: KENYA_REAL_BOUNDS.center.lat, lng: KENYA_REAL_BOUNDS.center.lng });
   const [showCrosshair, setShowCrosshair] = useState(true);
+  const [selectedPark, setSelectedPark] = useState<RealPark | null>(null);
   
   // Pan/Drag state
   const [isPanning, setIsPanning] = useState(false);
@@ -86,8 +74,15 @@ const LiveSatelliteMapPage = () => {
   const [playbackThreats, setPlaybackThreats] = useState<HistoricalThreat[]>([]);
   const [showPlayback, setShowPlayback] = useState(false);
   
+  // Show corridors
+  const [showCorridors, setShowCorridors] = useState(true);
+  
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
+
+  // Generate tracked data
+  const trackedAnimals = useMemo(() => generateTrackedAnimals(), []);
+  const parkSensors = useMemo(() => generateParkSensors(), []);
 
   const toggleLayer = (layerId: string) => {
     setLayers(prev => prev.map(layer => 
@@ -105,12 +100,11 @@ const LiveSatelliteMapPage = () => {
   const getPosition = (lat: number, lng: number) => {
     const x = ((lng - KENYA_BOUNDS.minLng) / (KENYA_BOUNDS.maxLng - KENYA_BOUNDS.minLng)) * 100;
     const y = ((KENYA_BOUNDS.maxLat - lat) / (KENYA_BOUNDS.maxLat - KENYA_BOUNDS.minLat)) * 100;
-    return { x: Math.max(5, Math.min(95, x)), y: Math.max(5, Math.min(95, y)) };
+    return { x: Math.max(2, Math.min(98, x)), y: Math.max(2, Math.min(98, y)) };
   };
 
   // Convert pixel position to GPS coordinates
   const pixelToGps = useCallback((pixelX: number, pixelY: number, containerRect: DOMRect) => {
-    // Account for pan offset and zoom
     const adjustedX = (pixelX - containerRect.left - panOffset.x) / zoom;
     const adjustedY = (pixelY - containerRect.top - panOffset.y) / zoom;
     
@@ -123,9 +117,9 @@ const LiveSatelliteMapPage = () => {
     return { lat, lng };
   }, [panOffset, zoom]);
 
-  // Calculate distance between two GPS points (Haversine formula)
+  // Calculate distance (Haversine formula)
   const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-    const R = 6371; // Earth's radius in km
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLng = (lng2 - lng1) * Math.PI / 180;
     const a = 
@@ -136,7 +130,7 @@ const LiveSatelliteMapPage = () => {
     return R * c;
   };
 
-  // Calculate bearing between two GPS points
+  // Calculate bearing
   const calculateBearing = (lat1: number, lng1: number, lat2: number, lng2: number) => {
     const dLng = (lng2 - lng1) * Math.PI / 180;
     const lat1Rad = lat1 * Math.PI / 180;
@@ -150,7 +144,7 @@ const LiveSatelliteMapPage = () => {
     return (bearing + 360) % 360;
   };
 
-  // Handle mouse movement for GPS tracking
+  // Handle mouse movement
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!mapContainerRef.current) return;
     const rect = mapContainerRef.current.getBoundingClientRect();
@@ -210,7 +204,7 @@ const LiveSatelliteMapPage = () => {
     return 'OVERVIEW';
   };
 
-  // Determine which elements to show based on zoom
+  // Visibility thresholds
   const showDetailedAnimals = zoom >= ZOOM_LEVELS.detailed;
   const showSensors = zoom >= ZOOM_LEVELS.precise;
   const showLabels = zoom >= ZOOM_LEVELS.maximum;
@@ -220,7 +214,7 @@ const LiveSatelliteMapPage = () => {
     setPlaybackThreats(threats);
   }, []);
 
-  // Reset pan when zoom changes significantly
+  // Reset pan when zoom resets
   useEffect(() => {
     if (zoom === 1) {
       setPanOffset({ x: 0, y: 0 });
@@ -238,27 +232,39 @@ const LiveSatelliteMapPage = () => {
     }
   };
 
+  // Stats calculations
+  const totalSensors = realKenyaParks.reduce((sum, p) => sum + p.sensors, 0);
+  const totalDrones = realKenyaParks.reduce((sum, p) => sum + p.drones, 0);
+  const totalWildlife = realKenyaParks.reduce((sum, p) => sum + p.wildlife, 0);
+  const connectedSatellites = satelliteConnections.filter(s => s.status === 'connected').length;
+
   return (
     <AppLayout>
       <div className="h-[calc(100vh-4rem)] flex flex-col p-4 gap-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-500/10">
-              <Satellite className="h-6 w-6 text-blue-400" />
+            <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+              <Satellite className="h-6 w-6 text-cyan-400" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">Live Satellite Monitoring</h1>
+              <h1 className="text-xl font-bold flex items-center gap-2">
+                Kenya Wildlife Satellite Network
+                <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30">
+                  <Globe className="h-3 w-3 mr-1" />
+                  LIVE
+                </Badge>
+              </h1>
               <p className="text-sm text-muted-foreground">
-                Real-time Kenya National Parks Map
+                Real-time GPS tracking across {realKenyaParks.length} protected areas
               </p>
             </div>
           </div>
           
           <div className="flex items-center gap-3">
             <Badge variant="outline" className="text-green-400 border-green-500/50">
-              <span className="w-2 h-2 rounded-full bg-green-400 mr-2 animate-pulse" />
-              LIVE
+              <Wifi className="h-3 w-3 mr-1" />
+              {connectedSatellites}/{satelliteConnections.length} Satellites
             </Badge>
             <Badge variant="outline" className="font-mono text-xs">
               {getZoomLabel()}
@@ -270,7 +276,7 @@ const LiveSatelliteMapPage = () => {
               </Badge>
             )}
             <span className="text-xs text-muted-foreground">
-              Updated: {lastUpdate.toLocaleTimeString()}
+              {lastUpdate.toLocaleTimeString()}
             </span>
             <Button variant="outline" size="sm" onClick={handleRefresh}>
               <RefreshCw className="h-4 w-4" />
@@ -282,7 +288,7 @@ const LiveSatelliteMapPage = () => {
         <div className="flex-1 flex gap-4">
           {/* Main Map */}
           <div className="flex-1 relative">
-            <Card className="h-full bg-card/50 backdrop-blur border-border/50 overflow-hidden">
+            <Card className="h-full bg-card/50 backdrop-blur border-cyan-500/20 overflow-hidden">
               <div 
                 ref={mapContainerRef}
                 className={`absolute inset-0 ${isPanning ? 'cursor-grab' : 'cursor-crosshair'} ${isDragging ? 'cursor-grabbing' : ''}`}
@@ -305,25 +311,31 @@ const LiveSatelliteMapPage = () => {
                     className="absolute inset-0 bg-cover bg-center"
                     style={{ 
                       backgroundImage: `url(${satelliteAerialMap})`,
-                      filter: 'brightness(0.85) saturate(1.1)'
+                      filter: 'brightness(0.9) saturate(1.2) contrast(1.1)'
                     }}
                   />
                   
+                  {/* Dark overlay for better visibility */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-black/20 via-transparent to-black/30" />
+                  
                   {/* Scan line effect */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent animate-pulse" style={{ animationDuration: '4s' }} />
-                  </div>
+                  <motion.div 
+                    className="absolute inset-0 pointer-events-none bg-gradient-to-b from-transparent via-cyan-500/10 to-transparent"
+                    animate={{ y: ['-100%', '100%'] }}
+                    transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
+                    style={{ height: '20%' }}
+                  />
                   
                   {/* Coordinate grid overlay */}
-                  <div className="absolute inset-0" style={{ opacity: 0.15 + (zoom * 0.1) }}>
+                  <div className="absolute inset-0" style={{ opacity: 0.15 + (zoom * 0.08) }}>
                     <svg width="100%" height="100%">
                       <defs>
-                        <pattern id="grid-main" width={80 / zoom} height={80 / zoom} patternUnits="userSpaceOnUse">
-                          <path d={`M ${80/zoom} 0 L 0 0 0 ${80/zoom}`} fill="none" stroke="hsl(var(--primary))" strokeWidth="0.5"/>
+                        <pattern id="grid-main" width={60 / zoom} height={60 / zoom} patternUnits="userSpaceOnUse">
+                          <path d={`M ${60/zoom} 0 L 0 0 0 ${60/zoom}`} fill="none" stroke="hsl(var(--primary))" strokeWidth="0.3"/>
                         </pattern>
                         {zoom >= ZOOM_LEVELS.detailed && (
-                          <pattern id="grid-fine" width={20 / zoom} height={20 / zoom} patternUnits="userSpaceOnUse">
-                            <path d={`M ${20/zoom} 0 L 0 0 0 ${20/zoom}`} fill="none" stroke="hsl(var(--primary))" strokeWidth="0.2"/>
+                          <pattern id="grid-fine" width={15 / zoom} height={15 / zoom} patternUnits="userSpaceOnUse">
+                            <path d={`M ${15/zoom} 0 L 0 0 0 ${15/zoom}`} fill="none" stroke="hsl(var(--primary))" strokeWidth="0.15"/>
                           </pattern>
                         )}
                       </defs>
@@ -335,45 +347,116 @@ const LiveSatelliteMapPage = () => {
                   </div>
 
                   {/* Kenya boundary overlay */}
-                  <div className="absolute inset-4 border-2 border-cyan-400/40 rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.15)]">
-                    <div className="absolute top-2 left-2 px-2 py-1 bg-background/90 rounded text-xs text-cyan-400 font-mono flex items-center gap-2">
-                      <Satellite className="h-3 w-3" />
+                  <div className="absolute inset-3 border-2 border-cyan-400/30 rounded-lg shadow-[0_0_30px_rgba(0,255,255,0.1)]">
+                    <div className="absolute top-2 left-2 px-3 py-1.5 bg-background/90 backdrop-blur rounded-lg border border-cyan-500/30 text-xs text-cyan-400 font-mono flex items-center gap-2">
+                      <Satellite className="h-3 w-3 animate-pulse" />
                       KENYA • {getZoomLabel()} • {zoom.toFixed(2)}x
+                    </div>
+                    <div className="absolute bottom-2 left-2 px-2 py-1 bg-background/80 rounded text-[9px] text-muted-foreground font-mono">
+                      {KENYA_REAL_BOUNDS.south}° to {KENYA_REAL_BOUNDS.north}°N • {KENYA_REAL_BOUNDS.west}° to {KENYA_REAL_BOUNDS.east}°E
                     </div>
                   </div>
 
-                  {/* Park markers */}
-                  {parkLocations.map((park) => {
+                  {/* Wildlife Corridors */}
+                  {showCorridors && (
+                    <WildlifeCorridorLayer 
+                      corridors={wildlifeCorridors} 
+                      mapBounds={KENYA_BOUNDS}
+                      zoom={zoom}
+                    />
+                  )}
+
+                  {/* Park markers with real GPS */}
+                  {realKenyaParks.map((park) => {
                     const pos = getPosition(park.lat, park.lng);
                     return (
-                      <div
+                      <RealParkMarker
                         key={park.id}
-                        className="absolute transition-all duration-200"
-                        style={{ 
-                          left: `${pos.x}%`, 
-                          top: `${pos.y}%`,
-                          transform: `scale(${1/zoom})`
-                        }}
-                      >
-                        <div className="relative group">
-                          <div className={`rounded-full bg-emerald-500/40 border-2 border-emerald-400/80 transition-all ${
-                            zoom >= ZOOM_LEVELS.regional ? 'w-4 h-4' : 'w-3 h-3'
-                          }`}>
-                            {zoom >= ZOOM_LEVELS.detailed && (
-                              <div className="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping" />
-                            )}
-                          </div>
-                          <div className={`absolute left-5 top-1/2 -translate-y-1/2 transition-opacity ${
-                            zoom >= ZOOM_LEVELS.regional ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                          }`}>
-                            <span className="text-[10px] text-emerald-400 whitespace-nowrap bg-background/90 px-2 py-0.5 rounded font-medium">
-                              {park.name}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
+                        park={park}
+                        position={pos}
+                        zoom={zoom}
+                        isSelected={selectedPark?.id === park.id}
+                        onSelect={() => setSelectedPark(selectedPark?.id === park.id ? null : park)}
+                      />
                     );
                   })}
+
+                  {/* Tracked Animals */}
+                  {isLayerEnabled('animals') && showDetailedAnimals && (
+                    <AnimatePresence>
+                      {trackedAnimals.slice(0, Math.floor(50 * zoom)).map((animal) => {
+                        const pos = getPosition(animal.lat, animal.lng);
+                        return (
+                          <motion.div
+                            key={animal.id}
+                            className="absolute z-5 pointer-events-auto"
+                            style={{ 
+                              left: `${pos.x}%`, 
+                              top: `${pos.y}%`,
+                              transform: `translate(-50%, -50%) scale(${1/zoom})`
+                            }}
+                            initial={{ scale: 0, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0, opacity: 0 }}
+                          >
+                            <div 
+                              className={`w-2 h-2 rounded-full cursor-pointer ${
+                                animal.status === 'healthy' ? 'bg-green-400' :
+                                animal.status === 'stressed' ? 'bg-yellow-400' : 'bg-red-400'
+                              }`}
+                              title={`${animal.name} (${animal.species})`}
+                            >
+                              {animal.status === 'healthy' && (
+                                <div className="absolute inset-0 rounded-full bg-green-400/30 animate-ping" style={{ animationDuration: '3s' }} />
+                              )}
+                            </div>
+                            {showLabels && (
+                              <span className="absolute left-3 top-0 text-[7px] text-green-300 whitespace-nowrap bg-background/80 px-1 rounded">
+                                {animal.collarId}
+                              </span>
+                            )}
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
+                  )}
+
+                  {/* IoT Sensors */}
+                  {isLayerEnabled('sensors') && showSensors && (
+                    <AnimatePresence>
+                      {parkSensors.slice(0, Math.floor(80 * zoom)).map((sensor) => {
+                        const pos = getPosition(sensor.lat, sensor.lng);
+                        const sensorColor = sensor.type === 'fire' ? 'orange' : 
+                                           sensor.type === 'motion' ? 'cyan' :
+                                           sensor.type === 'camera' ? 'purple' :
+                                           sensor.type === 'acoustic' ? 'pink' : 'blue';
+                        return (
+                          <motion.div
+                            key={sensor.id}
+                            className="absolute z-5 pointer-events-auto"
+                            style={{ 
+                              left: `${pos.x}%`, 
+                              top: `${pos.y}%`,
+                              transform: `translate(-50%, -50%) scale(${1/zoom})`
+                            }}
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            exit={{ scale: 0 }}
+                          >
+                            <div 
+                              className={`w-1.5 h-1.5 rounded-sm cursor-pointer`}
+                              style={{ 
+                                backgroundColor: sensor.status === 'online' 
+                                  ? `var(--${sensorColor}-400, #${sensorColor === 'orange' ? 'f97316' : sensorColor === 'cyan' ? '06b6d4' : sensorColor === 'purple' ? '8b5cf6' : sensorColor === 'pink' ? 'ec4899' : '3b82f6'})`
+                                  : sensor.status === 'warning' ? '#fbbf24' : '#ef4444'
+                              }}
+                              title={`${sensor.type} sensor - ${sensor.status}`}
+                            />
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
+                  )}
 
                   {/* Historical threats from playback */}
                   <AnimatePresence>
@@ -408,80 +491,6 @@ const LiveSatelliteMapPage = () => {
                     })}
                   </AnimatePresence>
 
-                  {/* Layer overlays */}
-                  {isLayerEnabled('fire') && (
-                    <FireRiskOverlay
-                      zones={fireRiskZones}
-                      mapBounds={KENYA_BOUNDS}
-                      onSelect={(zone) => setSelectedItem({ type: 'fire', data: zone })}
-                    />
-                  )}
-
-                  {isLayerEnabled('poaching') && (
-                    <PoachingHeatmap
-                      zones={poachingRiskZones}
-                      mapBounds={KENYA_BOUNDS}
-                      onSelect={(zone) => setSelectedItem({ type: 'poaching', data: zone })}
-                    />
-                  )}
-
-                  {isLayerEnabled('animals') && showDetailedAnimals && (
-                    <AnimalTrackingLayer
-                      animals={animalTracking}
-                      mapBounds={KENYA_BOUNDS}
-                      onSelect={(animal) => setSelectedItem({ type: 'animal', data: animal })}
-                    />
-                  )}
-
-                  {isLayerEnabled('drones') && zoom >= ZOOM_LEVELS.regional && (
-                    <DroneFeedOverlay
-                      drones={droneFeedsData}
-                      mapBounds={KENYA_BOUNDS}
-                      onSelect={(drone) => setSelectedItem({ type: 'drone', data: drone })}
-                    />
-                  )}
-
-                  {isLayerEnabled('weather') && (
-                    <WeatherOverlay
-                      weatherData={weatherData}
-                      mapBounds={KENYA_BOUNDS}
-                    />
-                  )}
-
-                  {/* IoT Sensors */}
-                  {isLayerEnabled('sensors') && showSensors && (
-                    <div className="absolute inset-0 pointer-events-none">
-                      {mockSensors.slice(0, 20).map((sensor, idx) => {
-                        const park = parkLocations[idx % parkLocations.length];
-                        const offsetLat = (Math.random() - 0.5) * 0.5;
-                        const offsetLng = (Math.random() - 0.5) * 0.5;
-                        const pos = getPosition(park.lat + offsetLat, park.lng + offsetLng);
-                        
-                        return (
-                          <motion.div
-                            key={sensor.id}
-                            initial={{ scale: 0, opacity: 0 }}
-                            animate={{ scale: 1 / zoom, opacity: 1 }}
-                            className="absolute pointer-events-auto cursor-pointer"
-                            style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-                          >
-                            <div className={`w-2 h-2 rounded-full ${
-                              sensor.status === 'online' ? 'bg-cyan-400' :
-                              sensor.status === 'warning' ? 'bg-yellow-400' : 'bg-red-400'
-                            }`}>
-                              <div className="absolute inset-0 rounded-full bg-cyan-400/30 animate-ping" style={{ animationDuration: '2s' }} />
-                            </div>
-                            {showLabels && (
-                              <span className="absolute left-3 top-0 text-[8px] text-cyan-300 whitespace-nowrap bg-background/80 px-1 rounded">
-                                {sensor.name}
-                              </span>
-                            )}
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-                  )}
-
                   {/* Locked Points */}
                   <AnimatePresence>
                     {lockedPoints.map((point, index) => {
@@ -504,24 +513,24 @@ const LiveSatelliteMapPage = () => {
                   </AnimatePresence>
                 </div>
 
-                {/* Crosshair overlay - fixed position */}
+                {/* Crosshair overlay */}
                 {showCrosshair && (
                   <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                     <div className="relative">
-                      <div className="absolute w-16 h-px bg-cyan-400/60 -translate-x-1/2 left-1/2" />
-                      <div className="absolute h-16 w-px bg-cyan-400/60 -translate-y-1/2 top-1/2" />
-                      <div className="w-6 h-6 rounded-full border-2 border-cyan-400/80 flex items-center justify-center">
-                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                      <div className="absolute w-20 h-px bg-cyan-400/50 -translate-x-1/2 left-1/2" />
+                      <div className="absolute h-20 w-px bg-cyan-400/50 -translate-y-1/2 top-1/2" />
+                      <div className="w-8 h-8 rounded-full border-2 border-cyan-400/70 flex items-center justify-center">
+                        <div className="w-2 h-2 rounded-full bg-cyan-400" />
                       </div>
-                      <div className="absolute -top-4 -left-4 w-3 h-3 border-t-2 border-l-2 border-cyan-400/60" />
-                      <div className="absolute -top-4 -right-4 w-3 h-3 border-t-2 border-r-2 border-cyan-400/60" />
-                      <div className="absolute -bottom-4 -left-4 w-3 h-3 border-b-2 border-l-2 border-cyan-400/60" />
-                      <div className="absolute -bottom-4 -right-4 w-3 h-3 border-b-2 border-r-2 border-cyan-400/60" />
+                      <div className="absolute -top-5 -left-5 w-4 h-4 border-t-2 border-l-2 border-cyan-400/50" />
+                      <div className="absolute -top-5 -right-5 w-4 h-4 border-t-2 border-r-2 border-cyan-400/50" />
+                      <div className="absolute -bottom-5 -left-5 w-4 h-4 border-b-2 border-l-2 border-cyan-400/50" />
+                      <div className="absolute -bottom-5 -right-5 w-4 h-4 border-b-2 border-r-2 border-cyan-400/50" />
                     </div>
                   </div>
                 )}
 
-                {/* Real-time GPS coordinate display */}
+                {/* GPS coordinate display */}
                 <div className="absolute bottom-4 right-4 bg-background/95 backdrop-blur rounded-lg border border-cyan-500/30 p-3 font-mono text-xs space-y-1">
                   <div className="flex items-center gap-2 text-cyan-400 font-semibold mb-2">
                     <Target className="h-4 w-4" />
@@ -538,10 +547,9 @@ const LiveSatelliteMapPage = () => {
                     <span className="text-amber-400">{isPanning ? 'PAN' : 'TARGET'}</span>
                   </div>
                   
-                  {/* Distance to nearest locked point */}
                   {lockedPoints.length > 0 && (
                     <div className="pt-2 border-t border-border/50 mt-2">
-                      <div className="text-muted-foreground mb-1">Nearest Locked Point:</div>
+                      <div className="text-muted-foreground mb-1">Nearest Locked:</div>
                       {(() => {
                         const distances = lockedPoints.map((p, i) => ({
                           index: i,
@@ -638,28 +646,22 @@ const LiveSatelliteMapPage = () => {
                 {/* Stats overlay */}
                 <div className="absolute left-4 bottom-4 flex gap-2 flex-wrap max-w-md">
                   <div className="bg-background/80 backdrop-blur rounded-lg px-3 py-2 flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-emerald-400" />
+                    <span className="text-xs">{realKenyaParks.length} Parks</span>
+                  </div>
+                  <div className="bg-background/80 backdrop-blur rounded-lg px-3 py-2 flex items-center gap-2">
                     <Radio className="h-4 w-4 text-green-400" />
-                    <span className="text-xs">{animalTracking.length} Animals</span>
-                    {!showDetailedAnimals && <Badge variant="outline" className="text-[8px] h-4">Zoom to view</Badge>}
+                    <span className="text-xs">{totalWildlife.toLocaleString()} Wildlife</span>
+                    {!showDetailedAnimals && <Badge variant="outline" className="text-[8px] h-4">Zoom in</Badge>}
                   </div>
                   <div className="bg-background/80 backdrop-blur rounded-lg px-3 py-2 flex items-center gap-2">
-                    <Video className="h-4 w-4 text-purple-400" />
-                    <span className="text-xs">{droneFeedsData.filter(d => d.status === 'live').length} Drones Live</span>
+                    <Activity className="h-4 w-4 text-cyan-400" />
+                    <span className="text-xs">{totalSensors} Sensors</span>
                   </div>
                   <div className="bg-background/80 backdrop-blur rounded-lg px-3 py-2 flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-red-400" />
-                    <span className="text-xs">{poachingRiskZones.filter(z => z.riskLevel > 60).length} High Risk Zones</span>
+                    <Eye className="h-4 w-4 text-purple-400" />
+                    <span className="text-xs">{totalDrones} Drones</span>
                   </div>
-                  <div className="bg-background/80 backdrop-blur rounded-lg px-3 py-2 flex items-center gap-2">
-                    <Flame className="h-4 w-4 text-orange-400" />
-                    <span className="text-xs">{fireRiskZones.filter(z => z.riskLevel === 'high' || z.riskLevel === 'extreme').length} Fire Alerts</span>
-                  </div>
-                  {showSensors && (
-                    <div className="bg-background/80 backdrop-blur rounded-lg px-3 py-2 flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-cyan-400" />
-                      <span className="text-xs">{mockSensors.length} Sensors</span>
-                    </div>
-                  )}
                 </div>
               </div>
             </Card>
@@ -667,7 +669,49 @@ const LiveSatelliteMapPage = () => {
 
           {/* Right sidebar */}
           <div className="w-72 flex flex-col gap-4 overflow-y-auto">
+            {/* Satellite Connections */}
+            <SatelliteConnectionPanel connections={satelliteConnections} />
+
             <LiveMapLayers layers={layers} onToggle={toggleLayer} />
+
+            {/* Corridor Toggle */}
+            <Card className="bg-card/90 backdrop-blur border-border/50">
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-green-400" />
+                    Wildlife Corridors
+                  </span>
+                  <Button
+                    variant={showCorridors ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-6 text-[10px]"
+                    onClick={() => setShowCorridors(!showCorridors)}
+                  >
+                    {showCorridors ? 'Hide' : 'Show'}
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              {showCorridors && (
+                <CardContent className="px-4 pb-4 space-y-1">
+                  {wildlifeCorridors.map(corridor => (
+                    <div key={corridor.id} className="flex items-center justify-between text-xs p-1.5 rounded bg-muted/30">
+                      <span className="truncate">{corridor.name}</span>
+                      <Badge 
+                        variant="outline" 
+                        className={`text-[9px] h-4 ${
+                          corridor.status === 'open' ? 'text-green-400 border-green-500/50' :
+                          corridor.status === 'restricted' ? 'text-amber-400 border-amber-500/50' :
+                          'text-red-400 border-red-500/50'
+                        }`}
+                      >
+                        {corridor.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              )}
+            </Card>
 
             {/* Threat Playback Toggle */}
             <Card className="bg-card/90 backdrop-blur border-border/50">
@@ -689,7 +733,6 @@ const LiveSatelliteMapPage = () => {
               </CardHeader>
             </Card>
 
-            {/* Threat Playback Controls */}
             {showPlayback && (
               <ThreatPlayback
                 onThreatUpdate={handleThreatUpdate}
@@ -705,11 +748,11 @@ const LiveSatelliteMapPage = () => {
                   Zoom Levels
                 </CardTitle>
               </CardHeader>
-              <CardContent className="px-4 pb-4 space-y-2 text-xs">
+              <CardContent className="px-4 pb-4 space-y-1.5 text-xs">
                 {Object.entries(ZOOM_LEVELS).map(([key, value]) => (
                   <div 
                     key={key}
-                    className={`flex items-center justify-between p-2 rounded cursor-pointer hover:bg-muted/30 ${
+                    className={`flex items-center justify-between p-2 rounded cursor-pointer hover:bg-muted/30 transition-colors ${
                       zoom >= value ? 'bg-cyan-500/20 text-cyan-400' : 'bg-muted/20 text-muted-foreground'
                     }`}
                     onClick={() => setZoom(value)}
@@ -721,9 +764,9 @@ const LiveSatelliteMapPage = () => {
               </CardContent>
             </Card>
 
-            {/* Selected item details */}
+            {/* Selected Park Details */}
             <AnimatePresence>
-              {selectedItem && (
+              {selectedPark && (
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -731,72 +774,55 @@ const LiveSatelliteMapPage = () => {
                 >
                   <Card className="bg-card/90 backdrop-blur border-border/50">
                     <CardHeader className="py-3 px-4 flex-row items-center justify-between">
-                      <CardTitle className="text-sm">
-                        {selectedItem.type === 'animal' && '🦁 Animal Details'}
-                        {selectedItem.type === 'drone' && '🛸 Drone Feed'}
-                        {selectedItem.type === 'poaching' && '🛡️ Risk Zone'}
-                        {selectedItem.type === 'fire' && '🔥 Fire Risk'}
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedPark.color }} />
+                        {selectedPark.name}
                       </CardTitle>
                       <Button 
                         variant="ghost" 
                         size="icon" 
                         className="h-6 w-6"
-                        onClick={() => setSelectedItem(null)}
+                        onClick={() => setSelectedPark(null)}
                       >
                         <X className="h-4 w-4" />
                       </Button>
                     </CardHeader>
-                    <CardContent className="px-4 pb-4 text-sm space-y-2">
-                      {selectedItem.type === 'animal' && (
-                        <>
-                          <p><strong>Name:</strong> {selectedItem.data.name}</p>
-                          <p><strong>Species:</strong> {selectedItem.data.species}</p>
-                          <p><strong>Collar ID:</strong> {selectedItem.data.collarId}</p>
-                          <p><strong>Status:</strong> {selectedItem.data.healthStatus}</p>
-                          <p><strong>Speed:</strong> {selectedItem.data.speed} km/h</p>
-                          <p><strong>Battery:</strong> {selectedItem.data.batteryLevel}%</p>
-                          <p className="font-mono text-xs text-cyan-400 mt-2">
-                            GPS: {selectedItem.data.location.lat.toFixed(4)}°, {selectedItem.data.location.lng.toFixed(4)}°
-                          </p>
-                        </>
-                      )}
-                      {selectedItem.type === 'drone' && (
-                        <>
-                          <p><strong>Name:</strong> {selectedItem.data.name}</p>
-                          <p><strong>Status:</strong> {selectedItem.data.status}</p>
-                          <p><strong>Mission:</strong> {selectedItem.data.mission}</p>
-                          <p><strong>Altitude:</strong> {selectedItem.data.altitude}m</p>
-                          <p><strong>Battery:</strong> {selectedItem.data.battery}%</p>
-                          <p className="font-mono text-xs text-cyan-400 mt-2">
-                            GPS: {selectedItem.data.location.lat.toFixed(4)}°, {selectedItem.data.location.lng.toFixed(4)}°
-                          </p>
-                        </>
-                      )}
-                      {selectedItem.type === 'poaching' && (
-                        <>
-                          <p><strong>Risk Level:</strong> {selectedItem.data.riskLevel}%</p>
-                          <p><strong>Radius:</strong> {selectedItem.data.radius} km</p>
-                          <p><strong>Factors:</strong></p>
-                          <ul className="text-xs text-muted-foreground pl-4">
-                            {selectedItem.data.factors.map((f, i) => (
-                              <li key={i}>• {f}</li>
-                            ))}
-                          </ul>
-                          <p className="text-xs mt-2 p-2 bg-muted/30 rounded">
-                            <strong>Recommendation:</strong> {selectedItem.data.patrolRecommendation}
-                          </p>
-                        </>
-                      )}
-                      {selectedItem.type === 'fire' && (
-                        <>
-                          <p><strong>Risk Level:</strong> {selectedItem.data.riskLevel}</p>
-                          <p><strong>Probability:</strong> {(selectedItem.data.prediction.probability * 100).toFixed(0)}%</p>
-                          <p><strong>Timeframe:</strong> {selectedItem.data.prediction.timeframe}</p>
-                          <p className="text-xs mt-2 p-2 bg-muted/30 rounded">
-                            <strong>Recommendation:</strong> {selectedItem.data.prediction.recommendation}
-                          </p>
-                        </>
-                      )}
+                    <CardContent className="px-4 pb-4 text-xs space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-muted/30 rounded p-2">
+                          <div className="text-muted-foreground">Area</div>
+                          <div className="text-foreground font-bold">{selectedPark.area.toLocaleString()} km²</div>
+                        </div>
+                        <div className="bg-muted/30 rounded p-2">
+                          <div className="text-muted-foreground">Wildlife</div>
+                          <div className="text-green-400 font-bold">{selectedPark.wildlife.toLocaleString()}</div>
+                        </div>
+                        <div className="bg-muted/30 rounded p-2">
+                          <div className="text-muted-foreground">Sensors</div>
+                          <div className="text-cyan-400 font-bold">{selectedPark.sensors}</div>
+                        </div>
+                        <div className="bg-muted/30 rounded p-2">
+                          <div className="text-muted-foreground">Drones</div>
+                          <div className="text-purple-400 font-bold">{selectedPark.drones}</div>
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-border/50">
+                        <div className="font-mono text-[10px] text-muted-foreground">
+                          GPS: {selectedPark.lat.toFixed(4)}°, {selectedPark.lng.toFixed(4)}°
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline" className={`text-[9px] ${
+                            selectedPark.status === 'active' ? 'text-green-400 border-green-500/50' :
+                            selectedPark.status === 'monitoring' ? 'text-amber-400 border-amber-500/50' :
+                            'text-red-400 border-red-500/50'
+                          }`}>
+                            {selectedPark.status}
+                          </Badge>
+                          <Badge variant="outline" className="text-[9px]">
+                            {selectedPark.priority} priority
+                          </Badge>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
