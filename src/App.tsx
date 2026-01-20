@@ -23,6 +23,11 @@ import DigitalTwinPage from "./pages/DigitalTwinPage";
 import VoiceCommandPage from "./pages/VoiceCommandPage";
 import AIVoiceOfParksPage from "./pages/AIVoiceOfParksPage";
 import CyberSecurityPage from "./pages/CyberSecurityPage";
+import PolicyIntelligencePage from "./pages/PolicyIntelligencePage";
+import WildlifeRegistryPage from "./pages/WildlifeRegistryPage";
+import RevenueIntelligencePage from "./pages/RevenueIntelligencePage";
+import ForensicEvidencePage from "./pages/ForensicEvidencePage";
+import CommunityServicePage from "./pages/CommunityServicePage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -54,6 +59,11 @@ const App = () => (
           <Route path="/iot" element={<IoTDashboardPage />} />
           <Route path="/fire-detection" element={<FireDetectionPage />} />
           <Route path="/satellite-map" element={<LiveSatelliteMapPage />} />
+          <Route path="/policy" element={<PolicyIntelligencePage />} />
+          <Route path="/registry" element={<WildlifeRegistryPage />} />
+          <Route path="/revenue" element={<RevenueIntelligencePage />} />
+          <Route path="/forensics" element={<ForensicEvidencePage />} />
+          <Route path="/community" element={<CommunityServicePage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
