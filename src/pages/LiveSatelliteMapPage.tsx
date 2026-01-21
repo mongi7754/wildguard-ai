@@ -11,6 +11,9 @@ import { WildlifeCorridorLayer } from '@/components/map/WildlifeCorridorLayer';
 import { RealParkMarker } from '@/components/map/RealParkMarker';
 import { WeatherOverlayLayer } from '@/components/map/WeatherOverlayLayer';
 import { WeatherStatsPanel } from '@/components/map/WeatherStatsPanel';
+import { DronePatrolLayer } from '@/components/map/DronePatrolLayer';
+import { DroneFleetPanel } from '@/components/map/DroneFleetPanel';
+import { generateDronePatrols, DronePatrolRoute } from '@/data/dronePatrolData';
 import { 
   realKenyaParks, 
   wildlifeCorridors, 
@@ -28,7 +31,7 @@ import {
   Satellite, ZoomIn, ZoomOut, Maximize2, X, MapPin, 
   Radio, Shield, Flame, RefreshCw, Crosshair, Target,
   Lock, Move, Navigation, AlertTriangle, Clock, Eye, Layers,
-  Globe, Wifi, Activity, Cloud
+  Globe, Wifi, Activity, Cloud, Plane
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import satelliteAerialMap from '@/assets/satellite-aerial-map.png';
@@ -83,6 +86,10 @@ const LiveSatelliteMapPage = () => {
   // Weather data
   const [showWeather, setShowWeather] = useState(true);
   const [weatherData, setWeatherData] = useState<ParkWeatherData[]>(() => generateParkWeatherData());
+  
+  // Drone patrol data
+  const [showDronePatrols, setShowDronePatrols] = useState(true);
+  const [dronePatrols] = useState<DronePatrolRoute[]>(() => generateDronePatrols());
   
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
@@ -514,6 +521,17 @@ const LiveSatelliteMapPage = () => {
                     />
                   )}
 
+                  {/* Drone Patrol Layer */}
+                  {showDronePatrols && (
+                    <DronePatrolLayer
+                      patrols={dronePatrols}
+                      mapBounds={KENYA_BOUNDS}
+                      zoom={zoom}
+                      showRoutes={true}
+                      showCoverage={true}
+                    />
+                  )}
+
                   {/* Locked Points */}
                   <AnimatePresence>
                     {lockedPoints.map((point, index) => {
@@ -723,6 +741,31 @@ const LiveSatelliteMapPage = () => {
             
             {/* Satellite Connections */}
             <SatelliteConnectionPanel connections={satelliteConnections} />
+            
+            {/* Drone Fleet Command Panel */}
+            {showDronePatrols && (
+              <DroneFleetPanel patrols={dronePatrols} />
+            )}
+            
+            {/* Drone Patrol Toggle */}
+            <Card className="bg-card/90 backdrop-blur border-purple-500/20">
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Plane className="h-4 w-4 text-purple-400" />
+                    Drone Patrols
+                  </span>
+                  <Button
+                    variant={showDronePatrols ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-6 text-[10px]"
+                    onClick={() => setShowDronePatrols(!showDronePatrols)}
+                  >
+                    {showDronePatrols ? 'Hide' : 'Show'}
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+            </Card>
 
             <LiveMapLayers layers={layers} onToggle={toggleLayer} />
 
